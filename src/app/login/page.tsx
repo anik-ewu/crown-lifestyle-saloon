@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/actions/auth";
 import { ActionForm, SubmitButton } from "@/components/action-form";
@@ -28,6 +29,11 @@ export default async function LoginPage() {
             <SubmitButton className="w-full">Sign in</SubmitButton>
           </ActionForm>
         </div>
+        {process.env.ALLOW_SIGNUP === "true" && (
+          <p className="mt-4 text-center text-sm text-stone-400">
+            New salon? <Link href="/signup" className="text-gold-light hover:underline">Start a free trial</Link>
+          </p>
+        )}
       </div>
     </main>
   );

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { generateTotpSecret, verifyTotp } from "@/lib/totp";
 
 export async function startTwoFactor(): Promise<ActionState> {
-  const ctx = await requireUser();
+  const ctx = await requireUser({ allowReadOnly: true });
   const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.user.id } });
   if (user.twoFactorEnabled) return fail("Two-step sign in is already on.");
   await prisma.user.update({ where: { id: user.id }, data: { totpSecret: generateTotpSecret() } });
@@ -17,7 +17,7 @@ export async function startTwoFactor(): Promise<ActionState> {
 }
 
 export async function enableTwoFactor(_: ActionState, fd: FormData): Promise<ActionState> {
-  const ctx = await requireUser();
+  const ctx = await requireUser({ allowReadOnly: true });
   const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.user.id } });
   if (user.twoFactorEnabled) return fail("Already on.");
   if (!user.totpSecret) return fail("Start setup first.");
@@ -29,7 +29,7 @@ export async function enableTwoFactor(_: ActionState, fd: FormData): Promise<Act
 }
 
 export async function disableTwoFactor(_: ActionState, fd: FormData): Promise<ActionState> {
-  const ctx = await requireUser();
+  const ctx = await requireUser({ allowReadOnly: true });
   const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.user.id } });
   if (!user.twoFactorEnabled || !user.totpSecret) return fail("Two-step sign in is off.");
   if (!(await verifyPassword(String(fd.get("password") ?? ""), user.passwordHash))) return fail("Wrong password.");

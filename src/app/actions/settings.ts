@@ -6,6 +6,7 @@ import { fail, ok, parseForm, type ActionState } from "@/lib/action";
 import { audit } from "@/lib/audit";
 import { destroyAllSessions, generateTempPassword, hashPassword, requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { PLANS } from "@/lib/plans";
 import { checkbox, optionalText, phoneField } from "@/lib/schemas";
 
 const salonSchema = z.object({
@@ -21,6 +22,7 @@ const salonSchema = z.object({
   reminderDays: z.coerce.number().int().min(14).max(730),
   subAdminDiscountLimitPct: z.coerce.number().int().min(0).max(100),
   subAdminCanViewDashboard: checkbox,
+  loyaltyPointsPer100: z.coerce.number().int().min(0).max(100),
 });
 
 export async function updateSalon(_: ActionState, fd: FormData): Promise<ActionState> {
@@ -52,8 +54,13 @@ export async function createSubAdmin(_: ActionState, fd: FormData): Promise<Acti
   if (await prisma.user.findUnique({ where: { phone } })) return fail("This phone number already has an account.");
   if (email && (await prisma.user.findUnique({ where: { email } }))) return fail("This email already has an account.");
 
+  const activeSubs = await ctx.db.user.count({ where: { role: "SUB_ADMIN", active: true } });
+  const limit = PLANS[ctx.salon.plan].maxSubAdmins;
+  if (activeSubs >= limit) return fail(`Your ${PLANS[ctx.salon.plan].label} plan allows ${limit} sub-admins. Upgrade to add more.`);
+
   const temp = generateTempPassword();
   const branchId = String(fd.get("branchId") || "") || null;
+  if (branchId && !(await ctx.db.branch.findFirst({ where: { id: branchId } }))) return fail("Branch not found.");
   const user = await ctx.db.user.create({
     data: {
       salonId: ctx.salon.id,
@@ -95,6 +102,10 @@ export async function setSubAdminActive(_: ActionState, fd: FormData): Promise<A
   const u = await subAdmin(ctx, String(fd.get("id")));
   if (!u) return fail("User not found.");
   const active = fd.get("active") === "true";
+  if (active) {
+    const activeSubs = await ctx.db.user.count({ where: { role: "SUB_ADMIN", active: true } });
+    if (activeSubs >= PLANS[ctx.salon.plan].maxSubAdmins) return fail("Your plan's sub-admin limit is reached.");
+  }
   await ctx.db.user.update({ where: { id: u.id }, data: { active } });
   if (!active) await destroyAllSessions(u.id);
   await audit(ctx, active ? "user.activate" : "user.deactivate", "User", u.id, { name: u.name });

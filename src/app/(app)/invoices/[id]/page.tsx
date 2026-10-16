@@ -5,7 +5,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { InvoiceStatusBadge } from "@/components/badges";
 import { Card, Input, LinkButton, Notice, PageHeader, buttonClass } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
-import { displayPhone, formatDateTime, money, PAYMENT_LABELS } from "@/lib/format";
+import { displayPhone, formatDateTime, money, PAYMENT_LABELS, whatsappLink } from "@/lib/format";
 
 export default async function InvoicePage({ params, searchParams }: PageProps<"/invoices/[id]">) {
   const ctx = await requireUser();
@@ -35,6 +35,26 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
               <a href={printHref(ctx.salon.receiptWidth === "A4" ? "MM80" : "A4")} target="_blank" className={buttonClass("secondary")}>
                 {ctx.salon.receiptWidth === "A4" ? "Print 80 mm" : "Print A4"}
               </a>
+              {!inv.customer.deletedAt && (
+                <a
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClass("secondary")}
+                  href={whatsappLink(
+                    inv.customer.phone,
+                    [
+                      `${ctx.salon.name} · Invoice ${inv.number}`,
+                      ...inv.items.map((i) => `${i.nameSnapshot}${i.qty > 1 ? ` x${i.qty}` : ""}: ${money(i.lineTotal)}`),
+                      ...(inv.discountAmount ? [`Discount: -${money(inv.discountAmount)}`] : []),
+                      ...(inv.pointsRedeemed ? [`Points: -${money(inv.pointsRedeemed * 100)}`] : []),
+                      `Total paid: ${money(inv.total)}`,
+                      "Thank you for visiting!",
+                    ].join("\n"),
+                  )}
+                >
+                  Send on WhatsApp
+                </a>
+              )}
             </>
           )
         }
@@ -73,10 +93,14 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
                 <dd className="tabular-nums">−{money(inv.discountAmount)}</dd>
               </div>
             )}
+            {inv.pointsRedeemed > 0 && (
+              <div className="flex justify-between"><dt>Loyalty points ({inv.pointsRedeemed})</dt><dd className="tabular-nums">−{money(inv.pointsRedeemed * 100)}</dd></div>
+            )}
             <div className="flex justify-between border-t border-stone-200 pt-1 text-base font-semibold"><dt>Total</dt><dd className="tabular-nums">{money(inv.total)}</dd></div>
             {inv.payments.filter((p) => p.amount > 0).map((p) => (
               <div key={p.id} className="flex justify-between text-stone-600"><dt>{PAYMENT_LABELS[p.method]}</dt><dd className="tabular-nums">{money(p.amount)}</dd></div>
             ))}
+            {inv.pointsEarned > 0 && <p className="pt-1 text-xs text-stone-500">Earned {inv.pointsEarned} loyalty points</p>}
           </dl>
         </Card>
 

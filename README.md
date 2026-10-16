@@ -23,6 +23,14 @@ To test with realistic data, run `npm run db:seed -- --demo`. It adds 4 staff, 6
 
 To create or reset another local login, run `DEV_PHONE=01XXXXXXXXX DEV_PASSWORD=... DEV_ROLE=SUB_ADMIN npx tsx scripts/dev-user.ts`.
 
+## Features
+
+- **Daily use:** billing with services, packages, custom packages and products; discounts and split payments; loyalty points; printable receipts (58/80 mm/A4); WhatsApp receipts; appointments; customer history.
+- **Follow-up:** a reminder board for customers with no visit in 90+ days (call, snooze, archive), and a birthday list.
+- **Reports:** a sales dashboard by month or year, by item, salon member, payment method and branch; commission; expenses and profit; daily closing; CSV export.
+- **Admin:** sub-admins with temporary passwords, branches, audit log, two-step sign in.
+- **Subscription (optional):** set `ALLOW_SIGNUP=true` so other salons can start a 14-day trial. They pay by bKash and enter the TrxID. A platform admin (`PLATFORM_ADMIN_PHONES`) approves the payment at `/platform`. A salon whose plan lapses becomes read-only after 7 days' grace. Crown's own salon is on the `INTERNAL` plan and never expires.
+
 ## Useful commands
 
 | Command | What it does |

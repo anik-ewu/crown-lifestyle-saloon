@@ -24,6 +24,28 @@ enum CustomerStatus {
 enum ItemType {
   SERVICE
   PACKAGE
+  PRODUCT
+}
+
+enum Plan {
+  TRIAL
+  BASIC
+  PRO
+  // the platform owner's own salon; never expires
+  INTERNAL
+}
+
+enum AppointmentStatus {
+  BOOKED
+  DONE
+  CANCELLED
+  NO_SHOW
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum DiscountType {
@@ -75,6 +97,11 @@ model Salon {
   subAdminDiscountLimitPct Int          @default(10)
   subAdminCanViewDashboard Boolean      @default(false)
   receiptWidth             ReceiptWidth @default(MM80)
+  // 0 = loyalty off; otherwise points earned per ৳100 paid (1 point = ৳1 off)
+  loyaltyPointsPer100      Int          @default(0)
+  plan                     Plan         @default(TRIAL)
+  trialEndsAt              DateTime?
+  paidUntil                DateTime?
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
 
@@ -85,6 +112,7 @@ model Salon {
   services  Service[]
   packages  Package[]
   invoices  Invoice[]
+  subscriptionPayments SubscriptionPayment[]
 }
 
 model Branch {
@@ -98,10 +126,12 @@ model Branch {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  salon    Salon         @relation(fields: [salonId], references: [id])
-  users    User[]
-  staff    StaffMember[]
-  invoices Invoice[]
+  salon        Salon         @relation(fields: [salonId], references: [id])
+  users        User[]
+  staff        StaffMember[]
+  invoices     Invoice[]
+  appointments Appointment[]
+  expenses     Expense[]
 
   @@index([salonId])
 }
@@ -166,13 +196,16 @@ model StaffMember {
   branchId  String?
   name      String
   phone     String?
-  title     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  title         String?
+  // share of the revenue they bring in, for the commission report
+  commissionPct Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
 
-  salon  Salon         @relation(fields: [salonId], references: [id])
-  branch Branch?       @relation(fields: [branchId], references: [id])
-  items  InvoiceItem[]
+  salon        Salon         @relation(fields: [salonId], references: [id])
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  items        InvoiceItem[]
+  appointments Appointment[]
 
   @@index([salonId])
 }
@@ -190,6 +223,7 @@ model Customer {
   snoozedUntil   DateTime?
   archivedReason String?
   lastVisitAt    DateTime?
+  loyaltyPoints  Int            @default(0)
   deletedAt      DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -277,6 +311,8 @@ model Invoice {
   discountValue     Int           @default(0)
   discountAmount    Int           @default(0)
   discountNote      String?
+  pointsRedeemed    Int           @default(0)
+  pointsEarned      Int           @default(0)
   total             Int
   status            InvoiceStatus @default(PAID)
   voidReason        String?
@@ -361,4 +397,96 @@ model ReminderLog {
 
   @@index([customerId, createdAt])
   @@index([salonId, createdAt])
+}
+
+model Product {
+  id         String   @id @default(cuid())
+  salonId    String
+  name       String
+  sku        String?
+  price      Int
+  stock      Int      @default(0)
+  lowStockAt Int      @default(3)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@index([salonId])
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  salonId   String
+  productId String
+  // negative for sales, positive for purchases
+  change    Int
+  reason    String
+  invoiceId String?
+  userId    String
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, createdAt])
+}
+
+model Appointment {
+  id            String            @id @default(cuid())
+  salonId       String
+  branchId      String
+  customerId    String?
+  name          String
+  phone         String?
+  staffMemberId String?
+  startsAt      DateTime
+  durationMin   Int               @default(30)
+  service       String?
+  note          String?
+  status        AppointmentStatus @default(BOOKED)
+  createdById   String
+  createdAt     DateTime          @default(now())
+
+  branch      Branch       @relation(fields: [branchId], references: [id])
+  staffMember StaffMember? @relation(fields: [staffMemberId], references: [id])
+
+  @@index([salonId, startsAt])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  salonId     String
+  branchId    String
+  date        DateTime @db.Date
+  category    String
+  amount      Int
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([salonId, date])
+}
+
+model SubscriptionPayment {
+  id          String                    @id @default(cuid())
+  salonId     String
+  plan        Plan
+  months      Int
+  amount      Int
+  method      String
+  trxId       String
+  status      SubscriptionPaymentStatus @default(PENDING)
+  submittedBy String
+  reviewedBy  String?
+  reviewNote  String?
+  createdAt   DateTime                  @default(now())
+  reviewedAt  DateTime?
+
+  salon Salon @relation(fields: [salonId], references: [id])
+
+  @@unique([method, trxId])
+  @@index([status, createdAt])
 }

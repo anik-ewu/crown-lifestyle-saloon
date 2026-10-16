@@ -4,7 +4,7 @@ import { deleteCustomer } from "@/app/actions/customers";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Badge, Empty, Input, PageHeader, Select } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
-import { daysBetween, displayPhone, formatDate, money } from "@/lib/format";
+import { daysBetween, displayPhone, formatDate, money, whatsappLink } from "@/lib/format";
 import { dueWhere } from "@/lib/reminders";
 
 export const metadata = { title: "Reminders" };
@@ -84,6 +84,14 @@ export default async function RemindersPage({ searchParams }: PageProps<"/remind
                   <div>
                     <Link href={`/customers/${c.id}`} className="font-medium hover:underline">{c.name}</Link>
                     <a href={`tel:${c.phone}`} className="ml-3 font-medium tabular-nums text-gold-dark hover:underline">{displayPhone(c.phone)}</a>
+                    <a
+                      href={whatsappLink(c.phone, `Hi ${c.name.split(" ")[0]}, we miss you at ${ctx.salon.name}! It's been a while since your last visit. Call ${ctx.salon.phone} to book your next appointment.`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-3 text-sm text-emerald-700 hover:underline"
+                    >
+                      WhatsApp
+                    </a>
                     <p className="mt-1 text-sm text-stone-600">
                       {c.lastVisitAt ? <>Last visit {formatDate(c.lastVisitAt)} · <b>{daysBetween(c.lastVisitAt, now)} days ago</b></> : "Never visited"}
                       {last && <> · {last.items.map((i) => i.nameSnapshot).join(", ")}</>}

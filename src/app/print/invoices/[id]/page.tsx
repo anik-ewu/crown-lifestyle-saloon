@@ -32,8 +32,10 @@ export default async function PrintInvoicePage({ params, searchParams }: PagePro
         <PrintControls auto={sp.auto === "1"} />
         <div className="receipt mx-auto px-[2mm] py-[3mm] font-mono leading-snug">
           <div className="text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.jpg" alt="" className={`mx-auto mb-1 rounded-full ${thermal ? "h-14 w-14 grayscale" : "h-20 w-20"}`} />
+            {s.logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={s.logoUrl} alt="" className={`mx-auto mb-1 rounded-full ${thermal ? "h-14 w-14 grayscale" : "h-20 w-20"}`} />
+            )}
             <p className="text-[1.25em] font-bold">{s.name}</p>
             <p>{inv.branch.address || s.address}</p>
             <p>{s.phone}</p>
@@ -64,10 +66,14 @@ export default async function PrintInvoicePage({ params, searchParams }: PagePro
           {inv.discountAmount > 0 && (
             <p className="flex justify-between"><span>Discount{inv.discountType === "PERCENT" && ` ${inv.discountValue}%`}</span><span>-{money(inv.discountAmount)}</span></p>
           )}
+          {inv.pointsRedeemed > 0 && (
+            <p className="flex justify-between"><span>Points used ({inv.pointsRedeemed})</span><span>-{money(inv.pointsRedeemed * 100)}</span></p>
+          )}
           <p className="mt-1 flex justify-between text-[1.2em] font-bold"><span>TOTAL</span><span>{money(inv.total)}</span></p>
           {inv.payments.filter((p) => p.amount > 0).map((p) => (
             <p key={p.id} className="flex justify-between"><span>Paid · {PAYMENT_LABELS[p.method]}</span><span>{money(p.amount)}</span></p>
           ))}
+          {inv.pointsEarned > 0 && <p className="mt-1 text-center">You earned {inv.pointsEarned} points · balance {inv.customer.loyaltyPoints}</p>}
           <hr className="my-2 border-dashed border-black" />
           <p className="text-center">{s.invoiceFooter || "Thank you for visiting!"}</p>
         </div>

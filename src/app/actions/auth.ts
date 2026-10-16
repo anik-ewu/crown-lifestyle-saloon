@@ -42,7 +42,7 @@ const changeSchema = z.object({
 });
 
 export async function changePasswordAction(_: ActionState, fd: FormData): Promise<ActionState> {
-  const ctx = await requireUser({ allowPasswordChange: true });
+  const ctx = await requireUser({ allowPasswordChange: true, allowReadOnly: true });
   const parsed = parseForm(changeSchema, fd);
   if (!parsed.ok) return fail(parsed.error);
   const { current, next, confirm } = parsed.data;

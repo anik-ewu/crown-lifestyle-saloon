@@ -11,7 +11,7 @@ import { dhakaDateString } from "@/lib/format";
 
 const lineSchema = z.discriminatedUnion("kind", [
   z.object({
-    kind: z.enum(["SERVICE", "PACKAGE"]),
+    kind: z.enum(["SERVICE", "PACKAGE", "PRODUCT"]),
     id: z.string().min(1),
     qty: z.number().int().min(1).max(20),
     staffId: z.string().nullable(),
@@ -32,13 +32,16 @@ const billSchema = z.object({
   discountType: z.enum(["NONE", "FLAT", "PERCENT"]),
   discountValue: z.number().int().min(0),
   discountNote: z.string().max(200).optional(),
+  pointsRedeemed: z.number().int().min(0).default(0),
   payments: z
     .array(z.object({ method: z.enum(["CASH", "CARD", "BKASH", "NAGAD", "OTHER"]), amount: z.number().int().min(0) }))
     .min(1)
     .max(5),
 });
 
-export type BillPayload = z.infer<typeof billSchema>;
+export type BillPayload = z.input<typeof billSchema>;
+
+class StockError extends Error {}
 
 export async function createInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
   const ctx = await requireUser();
@@ -58,18 +61,21 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
   // Look up every price on the server; the browser only sends ids.
   const serviceIds = bill.lines.flatMap((l) => (l.kind === "SERVICE" ? [l.id] : l.kind === "CUSTOM" ? l.serviceIds : []));
   const packageIds = bill.lines.flatMap((l) => (l.kind === "PACKAGE" ? [l.id] : []));
+  const productIds = bill.lines.flatMap((l) => (l.kind === "PRODUCT" ? [l.id] : []));
   const staffIds = [...new Set(bill.lines.map((l) => l.staffId).filter((s): s is string => !!s))];
-  const [services, packages, staff] = await Promise.all([
+  const [services, packages, staff, products] = await Promise.all([
     ctx.db.service.findMany({ where: { id: { in: serviceIds } } }),
     ctx.db.package.findMany({ where: { id: { in: packageIds } }, include: { items: { include: { service: true } } } }),
     ctx.db.staffMember.findMany({ where: { id: { in: staffIds }, active: true } }),
+    ctx.db.product.findMany({ where: { id: { in: productIds } } }),
   ]);
+  const prod = new Map(products.map((p) => [p.id, p]));
   const svc = new Map(services.map((s) => [s.id, s]));
   const pkg = new Map(packages.map((p) => [p.id, p]));
   if (staff.length !== staffIds.length) return fail("A selected salon member is no longer active.");
 
   type Line = {
-    itemType: "SERVICE" | "PACKAGE";
+    itemType: "SERVICE" | "PACKAGE" | "PRODUCT";
     itemId: string;
     nameSnapshot: string;
     unitPrice: number;
@@ -85,6 +91,10 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
       const s = svc.get(l.id);
       if (!s || !s.active) return fail("A service on this bill is no longer available.");
       lines.push({ itemType: "SERVICE", itemId: s.id, nameSnapshot: s.name, unitPrice: s.price, listPrice: s.price * l.qty, qty: l.qty, lineTotal: s.price * l.qty, staffMemberId: l.staffId });
+    } else if (l.kind === "PRODUCT") {
+      const p = prod.get(l.id);
+      if (!p || !p.active) return fail("A product on this bill is no longer available.");
+      lines.push({ itemType: "PRODUCT", itemId: p.id, nameSnapshot: p.name, unitPrice: p.price, listPrice: p.price * l.qty, qty: l.qty, lineTotal: p.price * l.qty, staffMemberId: l.staffId });
     } else if (l.kind === "PACKAGE") {
       const p = pkg.get(l.id);
       if (!p || !p.active) return fail("A package on this bill is no longer available.");
@@ -97,6 +107,13 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
     }
   }
 
+  const needed = new Map<string, number>();
+  for (const l of lines) if (l.itemType === "PRODUCT") needed.set(l.itemId, (needed.get(l.itemId) ?? 0) + l.qty);
+  for (const [id, qty] of needed) {
+    const p = prod.get(id)!;
+    if (p.stock < qty) return fail(`Only ${p.stock} ${p.name} left in stock.`);
+  }
+
   const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0);
   let discountAmount = 0;
   if (bill.discountType === "FLAT") discountAmount = bill.discountValue;
@@ -105,11 +122,19 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
     discountAmount = Math.round((subtotal * bill.discountValue) / 100);
   }
   if (discountAmount > subtotal) return fail("Discount can't be more than the bill.");
-  const total = subtotal - discountAmount;
+  const afterDiscount = subtotal - discountAmount;
+
+  // Loyalty: 1 point = ৳1 off; points earned per ৳100 actually paid.
+  const per100 = ctx.salon.loyaltyPointsPer100;
+  const pointsRedeemed = per100 > 0 ? bill.pointsRedeemed : 0;
+  if (pointsRedeemed > customer.loyaltyPoints) return fail(`${customer.name} has only ${customer.loyaltyPoints} points.`);
+  if (pointsRedeemed * 100 > afterDiscount) return fail("Points can't be worth more than the bill.");
+  const total = afterDiscount - pointsRedeemed * 100;
+  const pointsEarned = per100 > 0 ? Math.floor(total / 10000) * per100 : 0;
 
   // Overall discount vs list prices, including cheap custom packages.
   const listTotal = lines.reduce((s, l) => s + l.listPrice, 0);
-  const effectivePct = listTotal > 0 ? ((listTotal - total) / listTotal) * 100 : 0;
+  const effectivePct = listTotal > 0 ? ((listTotal - afterDiscount) / listTotal) * 100 : 0;
   const limit = ctx.salon.subAdminDiscountLimitPct;
   if (!ctx.isAdmin && effectivePct > limit + 0.01) {
     return fail(`Total discount is ${effectivePct.toFixed(1)}%. Sub-admins can give up to ${limit}%. Ask an admin.`);
@@ -123,62 +148,83 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
   const salonId = ctx.salon.id;
   const year = dhakaDateString().slice(0, 4);
 
-  const invoice = await ctx.db.$transaction(async (tx) => {
-    for (const l of lines) {
-      if (!l.custom) continue;
-      const p = await tx.package.create({
+  let invoice;
+  try {
+    invoice = await ctx.db.$transaction(async (tx) => {
+      for (const l of lines) {
+        if (!l.custom) continue;
+        const p = await tx.package.create({
+          data: {
+            salonId,
+            name: l.nameSnapshot,
+            price: l.unitPrice,
+            isCustom: true,
+            active: l.custom.save,
+            items: { create: l.custom.serviceIds.map((serviceId) => ({ serviceId, salonId })) },
+          },
+        });
+        l.itemId = p.id;
+      }
+      const { invoiceSeq } = await tx.salon.update({
+        where: { id: salonId },
+        data: { invoiceSeq: { increment: 1 } },
+        select: { invoiceSeq: true },
+      });
+      const number = `${ctx.salon.invoicePrefix}-${year}-${String(invoiceSeq).padStart(6, "0")}`;
+      const created = await tx.invoice.create({
         data: {
           salonId,
-          name: l.nameSnapshot,
-          price: l.unitPrice,
-          isCustom: true,
-          active: l.custom.save,
-          items: { create: l.custom.serviceIds.map((serviceId) => ({ serviceId, salonId })) },
+          branchId,
+          number,
+          customerId: customer.id,
+          createdById: ctx.user.id,
+          subtotal,
+          discountType: discountAmount > 0 ? bill.discountType : "NONE",
+          discountValue: discountAmount > 0 ? bill.discountValue : 0,
+          discountAmount,
+          discountNote: bill.discountNote || null,
+          pointsRedeemed,
+          pointsEarned,
+          total,
+          items: {
+            create: lines.map((l) => ({
+              salonId,
+              itemType: l.itemType,
+              itemId: l.itemId,
+              nameSnapshot: l.nameSnapshot,
+              unitPrice: l.unitPrice,
+              listPrice: l.listPrice,
+              qty: l.qty,
+              lineTotal: l.lineTotal,
+              staffMemberId: l.staffMemberId,
+            })),
+          },
+          payments: { create: (payments.length ? payments : [{ method: "CASH" as const, amount: 0 }]).map((p) => ({ ...p, salonId })) },
         },
       });
-      l.itemId = p.id;
-    }
-    const { invoiceSeq } = await tx.salon.update({
-      where: { id: salonId },
-      data: { invoiceSeq: { increment: 1 } },
-      select: { invoiceSeq: true },
-    });
-    const number = `${ctx.salon.invoicePrefix}-${year}-${String(invoiceSeq).padStart(6, "0")}`;
-    const created = await tx.invoice.create({
-      data: {
-        salonId,
-        branchId,
-        number,
-        customerId: customer.id,
-        createdById: ctx.user.id,
-        subtotal,
-        discountType: discountAmount > 0 ? bill.discountType : "NONE",
-        discountValue: discountAmount > 0 ? bill.discountValue : 0,
-        discountAmount,
-        discountNote: bill.discountNote || null,
-        total,
-        items: {
-          create: lines.map((l) => ({
-            salonId,
-            itemType: l.itemType,
-            itemId: l.itemId,
-            nameSnapshot: l.nameSnapshot,
-            unitPrice: l.unitPrice,
-            listPrice: l.listPrice,
-            qty: l.qty,
-            lineTotal: l.lineTotal,
-            staffMemberId: l.staffMemberId,
-          })),
+      for (const [productId, qty] of needed) {
+        // conditional decrement so two bills at once can't oversell
+        const res = await tx.product.updateMany({ where: { id: productId, stock: { gte: qty } }, data: { stock: { decrement: qty } } });
+        if (res.count !== 1) throw new StockError(prod.get(productId)!.name);
+        await tx.stockMovement.create({
+          data: { salonId, productId, change: -qty, reason: `Sold · ${number}`, invoiceId: created.id, userId: ctx.user.id },
+        });
+      }
+      await tx.customer.update({
+        where: { id: customer.id },
+        data: {
+          lastVisitAt: created.createdAt,
+          status: customer.status === "SNOOZED" ? "ACTIVE" : customer.status,
+          snoozedUntil: null,
+          loyaltyPoints: { increment: pointsEarned - pointsRedeemed },
         },
-        payments: { create: (payments.length ? payments : [{ method: "CASH" as const, amount: 0 }]).map((p) => ({ ...p, salonId })) },
-      },
+      });
+      return created;
     });
-    await tx.customer.update({
-      where: { id: customer.id },
-      data: { lastVisitAt: created.createdAt, status: customer.status === "SNOOZED" ? "ACTIVE" : customer.status, snoozedUntil: null },
-    });
-    return created;
-  });
+  } catch (e) {
+    if (e instanceof StockError) return fail(`${e.message} just ran out of stock.`);
+    throw e;
+  }
 
   await audit(ctx, "invoice.create", "Invoice", invoice.id, { number: invoice.number, total });
   if (effectivePct > limit + 0.01) {
@@ -201,6 +247,20 @@ export async function voidInvoice(_: ActionState, fd: FormData): Promise<ActionS
       where: { id: inv.id },
       data: { status: "VOID", voidReason: parsed.data.reason, voidedById: ctx.user.id, voidedAt: new Date() },
     });
+    const productLines = await tx.invoiceItem.findMany({ where: { invoiceId: inv.id, itemType: "PRODUCT" } });
+    for (const l of productLines) {
+      await tx.product.update({ where: { id: l.itemId }, data: { stock: { increment: l.qty } } });
+      await tx.stockMovement.create({
+        data: { salonId: ctx.salon.id, productId: l.itemId, change: l.qty, reason: `Void · ${inv.number}`, invoiceId: inv.id, userId: ctx.user.id },
+      });
+    }
+    if (inv.pointsEarned || inv.pointsRedeemed) {
+      const c = await tx.customer.findUniqueOrThrow({ where: { id: inv.customerId } });
+      await tx.customer.update({
+        where: { id: c.id },
+        data: { loyaltyPoints: Math.max(0, c.loyaltyPoints - inv.pointsEarned + inv.pointsRedeemed) },
+      });
+    }
     // keep the customer's last visit in line with their remaining paid bills
     const last = await tx.invoice.findFirst({
       where: { customerId: inv.customerId, status: "PAID" },

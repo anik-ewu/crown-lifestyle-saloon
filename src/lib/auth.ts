@@ -7,6 +7,7 @@ import { forSalon, prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/format";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { verifyTotp } from "@/lib/totp";
+import { subscriptionState } from "@/lib/plans";
 
 export { hashPassword, verifyPassword };
 import type { Role } from "@/generated/prisma/client";
@@ -158,7 +159,7 @@ export const getContext = cache(async () => {
   };
 });
 
-type RequireOpts = { role?: Role; allowPasswordChange?: boolean };
+type RequireOpts = { role?: Role; allowPasswordChange?: boolean; allowReadOnly?: boolean };
 
 /**
  * Use at the top of every page and server action. Redirects to /login when
@@ -170,10 +171,26 @@ export async function requireUser(opts: RequireOpts = {}): Promise<Ctx> {
   if (!ctx) redirect("/login");
   if (ctx.user.mustChangePassword && !opts.allowPasswordChange) redirect("/change-password");
   if (opts.role === "ADMIN" && !ctx.isAdmin) redirect("/?denied=1");
+  // Server Actions carry a Next-Action header: block every write while the
+  // salon's subscription is read-only.
+  if (!opts.allowReadOnly && subscriptionState(ctx.salon).readOnly && (await headers()).has("next-action")) {
+    redirect("/read-only");
+  }
   return ctx;
 }
 
 export const requireAdmin = () => requireUser({ role: "ADMIN" });
+
+export function isPlatformAdmin(ctx: Ctx): boolean {
+  const phones = (process.env.PLATFORM_ADMIN_PHONES ?? "").split(",").map((p) => normalizePhone(p)).filter(Boolean);
+  return ctx.isAdmin && phones.includes(ctx.user.phone);
+}
+
+export async function requirePlatformAdmin(): Promise<Ctx> {
+  const ctx = await requireUser({ allowReadOnly: true });
+  if (!isPlatformAdmin(ctx)) redirect("/?denied=1");
+  return ctx;
+}
 
 export function canViewDashboard(ctx: Ctx): boolean {
   return ctx.isAdmin || ctx.salon.subAdminCanViewDashboard;

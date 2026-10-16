@@ -110,3 +110,8 @@ export const PAYMENT_LABELS: Record<string, string> = {
   NAGAD: "Nagad",
   OTHER: "Other",
 };
+
+/** Free click-to-chat link; opens WhatsApp with the message typed in. */
+export function whatsappLink(e164: string, text: string): string {
+  return `https://wa.me/${e164.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+}

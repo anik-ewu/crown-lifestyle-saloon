@@ -10,10 +10,11 @@ import { displayPhone, formatDate, money, toPoisha, PAYMENT_LABELS } from "@/lib
 type Service = { id: string; name: string; category: string; price: number };
 type Pkg = { id: string; name: string; price: number; services: string[] };
 type Staff = { id: string; name: string };
+type Product = { id: string; name: string; price: number; stock: number };
 type Method = BillPayload["payments"][number]["method"];
 
 type Line =
-  | { key: number; kind: "SERVICE" | "PACKAGE"; id: string; name: string; unitPrice: number; qty: number; staffId: string | null }
+  | { key: number; kind: "SERVICE" | "PACKAGE" | "PRODUCT"; id: string; name: string; unitPrice: number; qty: number; staffId: string | null }
   | { key: number; kind: "CUSTOM"; name: string; serviceIds: string[]; listPrice: number; price: number; save: boolean; staffId: string | null };
 
 let nextKey = 1;
@@ -22,12 +23,16 @@ export function BillingForm({
   services,
   packages,
   staff,
+  products,
+  loyaltyEnabled,
   initialCustomer,
   discountLimit,
 }: {
   services: Service[];
   packages: Pkg[];
   staff: Staff[];
+  products: Product[];
+  loyaltyEnabled: boolean;
   initialCustomer: CustomerHit | null;
   discountLimit: number | null;
 }) {
@@ -37,6 +42,7 @@ export function BillingForm({
   const [discountType, setDiscountType] = useState<"NONE" | "FLAT" | "PERCENT">("NONE");
   const [discountInput, setDiscountInput] = useState("");
   const [discountNote, setDiscountNote] = useState("");
+  const [pointsInput, setPointsInput] = useState("");
   const [payments, setPayments] = useState<{ method: Method; amount: string }[]>([{ method: "CASH", amount: "" }]);
   const [state, formAction, pending] = useActionState(createInvoice, {});
 
@@ -51,18 +57,22 @@ export function BillingForm({
   const discountValue =
     discountType === "FLAT" ? Math.max(0, toPoisha(discountInput) || 0) : discountType === "PERCENT" ? Math.max(0, Math.round(Number(discountInput) || 0)) : 0;
   const discountAmount = Math.min(subtotal, discountType === "PERCENT" ? Math.round((subtotal * Math.min(discountValue, 100)) / 100) : discountValue);
-  const total = subtotal - discountAmount;
+  const afterDiscount = subtotal - discountAmount;
+  const maxPoints = loyaltyEnabled && customer ? Math.min(customer.loyaltyPoints, Math.floor(afterDiscount / 100)) : 0;
+  const pointsRedeemed = Math.min(maxPoints, Math.max(0, Math.floor(Number(pointsInput) || 0)));
+  const total = afterDiscount - pointsRedeemed * 100;
   const listTotal = lines.reduce((s, l) => s + (l.kind === "CUSTOM" ? l.listPrice : l.unitPrice * l.qty), 0);
-  const effectivePct = listTotal > 0 ? ((listTotal - total) / listTotal) * 100 : 0;
+  const effectivePct = listTotal > 0 ? ((listTotal - afterDiscount) / listTotal) * 100 : 0;
   const overLimit = discountLimit !== null && effectivePct > discountLimit + 0.01;
 
   const paymentAmounts = payments.length === 1 ? [total] : payments.map((p) => Math.max(0, toPoisha(p.amount) || 0));
   const paid = paymentAmounts.reduce((s, a) => s + a, 0);
   const remaining = total - paid;
 
-  function addItem(kind: "SERVICE" | "PACKAGE", id: string) {
+  function addItem(kind: "SERVICE" | "PACKAGE" | "PRODUCT", id: string) {
     if (!id) return;
-    const item = kind === "SERVICE" ? services.find((s) => s.id === id) : packages.find((p) => p.id === id);
+    const item =
+      kind === "SERVICE" ? services.find((s) => s.id === id) : kind === "PRODUCT" ? products.find((p) => p.id === id) : packages.find((p) => p.id === id);
     if (!item) return;
     setLines((ls) => [...ls, { key: nextKey++, kind, id, name: item.name, unitPrice: item.price, qty: 1, staffId: lastStaff }]);
   }
@@ -83,6 +93,7 @@ export function BillingForm({
         discountType: discountAmount > 0 ? discountType : "NONE",
         discountValue: discountAmount > 0 ? discountValue : 0,
         discountNote,
+        pointsRedeemed,
         payments: payments.map((p, i) => ({ method: p.method, amount: paymentAmounts[i] })),
       }
     : null;
@@ -114,6 +125,18 @@ export function BillingForm({
               </Select>
             </Field>
           </div>
+          {products.length > 0 && (
+            <Field label="Add product" className="mt-3 sm:w-1/2">
+              <Select value="" onChange={(e) => addItem("PRODUCT", e.target.value)}>
+                <option value="">Choose a product…</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id} disabled={p.stock <= 0}>
+                    {p.name} · {money(p.price)} · {p.stock > 0 ? `${p.stock} left` : "out of stock"}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <CustomPackageBuilder
             services={services}
             onAdd={(c) => setLines((ls) => [...ls, { key: nextKey++, kind: "CUSTOM", staffId: lastStaff, ...c }])}
@@ -189,6 +212,13 @@ export function BillingForm({
             <Input className="mt-2" placeholder="Reason (optional)" value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} maxLength={200} />
           )}
           {discountAmount > 0 && <p className="mt-2 flex justify-between text-sm"><span>Discount</span><span className="tabular-nums">−{money(discountAmount)}</span></p>}
+          {loyaltyEnabled && customer && customer.loyaltyPoints > 0 && (
+            <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+              <label htmlFor="points">Use points <span className="text-stone-500">({customer.loyaltyPoints} available)</span></label>
+              <Input id="points" inputMode="numeric" className="w-24 text-right" value={pointsInput} onChange={(e) => setPointsInput(e.target.value)} placeholder="0" />
+            </div>
+          )}
+          {pointsRedeemed > 0 && <p className="mt-1 flex justify-between text-sm"><span>Points</span><span className="tabular-nums">−{money(pointsRedeemed * 100)}</span></p>}
           <p className="mt-3 flex justify-between border-t border-stone-200 pt-3 text-lg font-semibold">
             <span>Total</span><span className="tabular-nums">{money(total)}</span>
           </p>
@@ -273,6 +303,7 @@ function CustomerPicker({ customer, onChange }: { customer: CustomerHit | null; 
         </p>
         <p className="text-sm text-stone-600">
           {displayPhone(customer.phone)} · {customer.lastVisitAt ? `last visit ${formatDate(customer.lastVisitAt)}` : "first visit"}
+          {customer.loyaltyPoints > 0 && ` · ${customer.loyaltyPoints} points`}
         </p>
         {customer.notes && <p className="mt-2 rounded-md bg-gold-light/50 px-2 py-1 text-sm"><b>Notes:</b> {customer.notes}</p>}
       </Card>

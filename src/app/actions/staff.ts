@@ -23,6 +23,7 @@ const staffSchema = z.object({
       return p;
     }),
   title: optionalText(60),
+  commissionPct: z.coerce.number().int().min(0).max(100).default(0),
   active: checkbox,
 });
 

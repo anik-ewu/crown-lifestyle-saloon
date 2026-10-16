@@ -4,7 +4,8 @@ import { RevenueChart, type RevenuePoint } from "@/components/revenue-chart";
 import { Button, Card, Empty, LinkButton, PageHeader, Select, Stat, Table } from "@/components/ui";
 import { canViewDashboard, requireUser } from "@/lib/auth";
 import { dayRange, dhakaDateString, money, monthRange, PAYMENT_LABELS, yearRange } from "@/lib/format";
-import { revenueSeries, salesByItem, salesByMethod, salesByStaff, salesSummary } from "@/lib/reports";
+import { activeBranches } from "@/lib/branch";
+import { expenseTotal, revenueSeries, salesByItem, salesByMethod, salesByStaff, salesSummary } from "@/lib/reports";
 
 export const metadata = { title: "Dashboard" };
 
@@ -22,14 +23,22 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const month = Math.min(12, Math.max(1, Number(sp.m) || tm));
   const range = period === "year" ? yearRange(year) : monthRange(year, month);
   const title = period === "year" ? String(year) : `${MONTHS[month - 1]} ${year}`;
+  const branches = await activeBranches(ctx);
+  const branch = branches.find((b) => b.id === sp.branch)?.id;
 
-  const [todaySales, summary, items, staff, methods, series] = await Promise.all([
-    salesSummary(ctx, dayRange(today)),
-    salesSummary(ctx, range),
-    salesByItem(ctx, range),
-    salesByStaff(ctx, range),
-    salesByMethod(ctx, range),
-    revenueSeries(ctx, range, period === "year" ? "month" : "day"),
+  const [todaySales, summary, items, staff, methods, series, expenses, lowStock, todaysAppointments] = await Promise.all([
+    salesSummary(ctx, dayRange(today), branch),
+    salesSummary(ctx, range, branch),
+    salesByItem(ctx, range, branch),
+    salesByStaff(ctx, range, branch),
+    salesByMethod(ctx, range, branch),
+    revenueSeries(ctx, range, period === "year" ? "month" : "day", branch),
+    ctx.isAdmin ? expenseTotal(ctx, range, branch) : Promise.resolve(0),
+    ctx.db.$queryRawUnsafe<{ id: string; name: string; stock: number }[]>(
+      `SELECT id, name, stock FROM "Product" WHERE "salonId" = $1 AND active AND stock <= "lowStockAt" ORDER BY stock LIMIT 10`,
+      ctx.salon.id,
+    ),
+    ctx.db.appointment.count({ where: { startsAt: dayRange(today), status: "BOOKED" } }),
   ]);
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -42,7 +51,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           bills: series.get(i + 1)?.bills ?? 0,
         }));
   const itemTotal = items.reduce((s, i) => s + i.revenue, 0);
-  const qs = new URLSearchParams({ period, y: String(year), m: String(month) }).toString();
+  const qs = new URLSearchParams({ period, y: String(year), m: String(month), ...(branch && { branch }) }).toString();
   const years = Array.from({ length: ty - 2023 + 1 }, (_, i) => ty - i);
 
   return (
@@ -57,11 +66,19 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         }
       />
 
-      <div className="mb-8 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <Stat label="Sales today" value={money(todaySales.revenue)} sub={`${todaySales.bills} bill${todaySales.bills === 1 ? "" : "s"}`} />
         <Stat label="New customers today" value={todaySales.new_customers} />
         <Stat label="Returning today" value={todaySales.returning} />
+        <Link href="/appointments" className="block"><Stat label="Bookings left today" value={todaysAppointments} /></Link>
       </div>
+      {lowStock.length > 0 && (
+        <div className="mb-8 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Low stock: {lowStock.map((p) => `${p.name} (${p.stock})`).join(", ")}.{" "}
+          {ctx.isAdmin && <Link href="/products" className="font-medium underline">Restock</Link>}
+        </div>
+      )}
+      {lowStock.length === 0 && <div className="mb-8" />}
 
       <form className="mb-4 flex flex-wrap items-center gap-2">
         <Select name="period" defaultValue={period} className="w-auto" aria-label="Period">
@@ -74,6 +91,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         <Select name="y" defaultValue={year} className="w-auto" aria-label="Year">
           {years.map((y) => <option key={y} value={y}>{y}</option>)}
         </Select>
+        {branches.length > 1 && (
+          <Select name="branch" defaultValue={branch ?? ""} className="w-auto" aria-label="Branch">
+            <option value="">All branches</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        )}
         <Button variant="secondary">Show</Button>
         <span className="text-sm text-stone-500">Month is ignored for a yearly view.</span>
       </form>
@@ -86,6 +109,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         <Stat label="New customers" value={summary.new_customers} />
         <Stat label="Returning customers" value={summary.returning} />
       </div>
+      {ctx.isAdmin && (
+        <div className="-mt-3 mb-6 grid gap-3 sm:grid-cols-3">
+          <Stat label="Discounts given" value={money(summary.discounts)} />
+          <Link href="/expenses" className="block"><Stat label="Expenses" value={money(expenses)} /></Link>
+          <Stat label="Profit (revenue − expenses)" value={money(summary.revenue - expenses)} />
+        </div>
+      )}
 
       <Card title={period === "year" ? `Revenue by month, ${year}` : `Revenue by day, ${title}`} className="mb-6">
         <RevenueChart data={points} />

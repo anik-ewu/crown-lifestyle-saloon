@@ -1,7 +1,8 @@
+import { setUserBranch } from "@/app/actions/branches";
 import { createSubAdmin, resetSubAdminPassword, setSubAdminActive } from "@/app/actions/settings";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { SettingsTabs } from "@/components/settings-tabs";
-import { Badge, Card, Empty, Field, Input, PageHeader } from "@/components/ui";
+import { Badge, Card, Empty, Field, Input, PageHeader, Select } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { displayPhone, formatDateTime } from "@/lib/format";
 
@@ -9,7 +10,11 @@ export const metadata = { title: "Sub-admins" };
 
 export default async function UsersPage() {
   const ctx = await requireAdmin();
-  const users = await ctx.db.user.findMany({ orderBy: [{ role: "asc" }, { active: "desc" }, { name: "asc" }] });
+  const [users, branches] = await Promise.all([
+    ctx.db.user.findMany({ orderBy: [{ role: "asc" }, { active: "desc" }, { name: "asc" }] }),
+    ctx.db.branch.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } }),
+  ]);
+  const multiBranch = branches.length > 1;
   const subs = users.filter((u) => u.role === "SUB_ADMIN");
   const admins = users.filter((u) => u.role === "ADMIN");
 
@@ -22,10 +27,18 @@ export default async function UsersPage() {
         <p className="mb-4 text-sm text-stone-600">
           They sign in with their phone number and a one-time temporary password, then must choose their own.
         </p>
-        <ActionForm action={createSubAdmin} resetOnSuccess className="grid items-end gap-3 sm:grid-cols-4">
+        <ActionForm action={createSubAdmin} resetOnSuccess className={`grid items-end gap-3 ${multiBranch ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
           <Field label="Name"><Input name="name" required /></Field>
           <Field label="Mobile number"><Input name="phone" required inputMode="tel" placeholder="01XXXXXXXXX" /></Field>
           <Field label="Email (optional)"><Input name="email" type="email" /></Field>
+          {multiBranch && (
+            <Field label="Branch">
+              <Select name="branchId" defaultValue="">
+                <option value="">All branches</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            </Field>
+          )}
           <SubmitButton>Create</SubmitButton>
         </ActionForm>
       </Card>
@@ -44,6 +57,16 @@ export default async function UsersPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-start gap-2">
+                {multiBranch && (
+                  <ActionForm action={setUserBranch} className="flex gap-1">
+                    <input type="hidden" name="userId" value={u.id} />
+                    <Select name="branchId" defaultValue={u.branchId ?? ""} className="w-auto py-1 text-sm" aria-label="Branch">
+                      <option value="">All branches</option>
+                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                    <SubmitButton variant="secondary" size="sm">Set</SubmitButton>
+                  </ActionForm>
+                )}
                 <ActionForm action={resetSubAdminPassword} confirm={`Reset ${u.name}'s password? They'll be signed out.`}>
                   <input type="hidden" name="id" value={u.id} />
                   <SubmitButton variant="secondary" size="sm">Reset password</SubmitButton>

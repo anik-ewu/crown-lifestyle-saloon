@@ -9,10 +9,11 @@ export default async function NewBillPage({ searchParams }: PageProps<"/billing/
   const sp = await searchParams;
   const customerId = typeof sp.customer === "string" ? sp.customer : null;
 
-  const [services, packages, staff, customer] = await Promise.all([
+  const [services, packages, staff, products, customer] = await Promise.all([
     ctx.db.service.findMany({ where: { active: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     ctx.db.package.findMany({ where: { active: true }, orderBy: { name: "asc" }, include: { items: true } }),
     ctx.db.staffMember.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    ctx.db.product.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     customerId ? ctx.db.customer.findUnique({ where: { id: customerId } }) : null,
   ]);
 
@@ -30,9 +31,11 @@ export default async function NewBillPage({ searchParams }: PageProps<"/billing/
         services={services.map((s) => ({ id: s.id, name: s.name, category: s.category, price: s.price }))}
         packages={packages.map((p) => ({ id: p.id, name: p.name, price: p.price, services: p.items.map((i) => i.serviceId) }))}
         staff={staff.map((s) => ({ id: s.id, name: s.name }))}
+        products={products.map((p) => ({ id: p.id, name: p.name, price: p.price, stock: p.stock }))}
+        loyaltyEnabled={ctx.salon.loyaltyPointsPer100 > 0}
         initialCustomer={
           customer && !customer.deletedAt
-            ? { id: customer.id, name: customer.name, phone: customer.phone, notes: customer.notes, lastVisitAt: customer.lastVisitAt?.toISOString() ?? null }
+            ? { id: customer.id, name: customer.name, phone: customer.phone, notes: customer.notes, lastVisitAt: customer.lastVisitAt?.toISOString() ?? null, loyaltyPoints: customer.loyaltyPoints }
             : null
         }
         discountLimit={ctx.isAdmin ? null : ctx.salon.subAdminDiscountLimitPct}

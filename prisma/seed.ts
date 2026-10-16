@@ -6,6 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { normalizePhone } from "../src/lib/format";
 import { hashPassword } from "../src/lib/password";
+import { STARTER_SERVICES as SERVICES } from "../src/lib/starter";
 
 const url = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
@@ -15,14 +16,6 @@ const HOURS = {
   thu: ["10:00", "23:00"], fri: ["10:00", "22:00"], sat: ["10:00", "23:00"],
 };
 
-// Starter list; prices are placeholders for the admin to change.
-const SERVICES: [string, string, number][] = [
-  ["Hair", "Haircut", 300], ["Hair", "Kids haircut", 200], ["Hair", "Hair wash & blow dry", 250],
-  ["Hair", "Hair colour", 1200], ["Hair", "Hair spa", 1000], ["Hair", "Hair straightening", 3000],
-  ["Beard", "Beard trim", 150], ["Beard", "Clean shave", 150], ["Beard", "Beard colour", 400],
-  ["Skin", "Facial", 1200], ["Skin", "Face cleanup", 600], ["Skin", "Face massage", 300],
-  ["Spa", "Head massage", 300], ["Spa", "Body massage", 1500], ["Spa", "Manicure", 500], ["Spa", "Pedicure", 600],
-];
 
 async function main() {
   let salon = await prisma.salon.findFirst();
@@ -35,6 +28,8 @@ async function main() {
         address: "A.K Haris Villa, House #02, Road #03, Block #F, Banasree, Rampura, Dhaka-1219",
         facebookUrl: "https://www.facebook.com/profile.php?id=61591904007465",
         invoicePrefix: "CLS",
+        plan: "INTERNAL",
+        logoUrl: "/logo.jpg",
         invoiceFooter: "Thank you for visiting Crown LifeStyle Saloon!",
         branches: {
           create: {

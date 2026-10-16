@@ -201,6 +201,22 @@ This is a desktop-first website. The pages also work in a phone browser, where p
 - **Phase 2:** sales dashboard, reminder board, audit log, CSV export, daily closing report.
 - **Phase 3:** extras from §4, then SaaS (§8).
 
+## 10a. Build status (17 Oct 2026)
+
+All three phases are built:
+
+- **Phase 1:** sign-in, sub-admins, customers, services, packages (including custom ones), salon members, billing, receipts, voids
+- **Phase 2:** sales dashboard, reminder board, audit log, CSV export, daily closing, two-step sign in
+- **Phase 3 extras:** commission, birthdays with WhatsApp wishes, loyalty points, appointments, expenses with a profit view, WhatsApp click-to-chat links for receipts and reminders, products and stock, multiple branches
+- **Phase 3 SaaS:** public sign-up (`ALLOW_SIGNUP`), plans with limits, bKash payments by transaction ID that the platform owner approves, a platform panel (`PLATFORM_ADMIN_PHONES`), and read-only mode when a plan lapses
+
+Not built yet:
+
+- **Automatic bKash/SSLCommerz gateway.** Payments are confirmed by hand from the transaction ID.
+- **SMS gateway.** Messages use free WhatsApp links instead.
+- **Postgres Row-Level Security.** The tenant filter in `forSalon()` is enforced in code.
+- **Bangla interface.**
+
 ## 11. Decisions
 | Question | Decision |
 |---|---|

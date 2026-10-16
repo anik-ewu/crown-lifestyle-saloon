@@ -64,7 +64,7 @@ export async function deleteCustomer(_: ActionState, fd: FormData): Promise<Acti
   redirect("/customers?deleted=1");
 }
 
-export type CustomerHit = { id: string; name: string; phone: string; notes: string | null; lastVisitAt: string | null };
+export type CustomerHit = { id: string; name: string; phone: string; notes: string | null; lastVisitAt: string | null; loyaltyPoints: number };
 
 export async function searchCustomers(q: string): Promise<CustomerHit[]> {
   const ctx = await requireUser();
@@ -88,6 +88,7 @@ export async function searchCustomers(q: string): Promise<CustomerHit[]> {
     phone: c.phone,
     notes: c.notes,
     lastVisitAt: c.lastVisitAt?.toISOString() ?? null,
+    loyaltyPoints: c.loyaltyPoints,
   }));
 }
 
@@ -107,6 +108,6 @@ export async function quickCreateCustomer(
     (await ctx.db.customer.create({ data: { phone, name: parsed.data.name, salonId: ctx.salon.id } }));
   if (!existing) await audit(ctx, "customer.create", "Customer", c.id);
   return {
-    customer: { id: c.id, name: c.name, phone: c.phone, notes: c.notes, lastVisitAt: c.lastVisitAt?.toISOString() ?? null },
+    customer: { id: c.id, name: c.name, phone: c.phone, notes: c.notes, lastVisitAt: c.lastVisitAt?.toISOString() ?? null, loyaltyPoints: c.loyaltyPoints },
   };
 }

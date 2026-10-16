@@ -48,6 +48,9 @@ export default async function SettingsPage() {
             <Field label="Max discount a sub-admin can give (%)">
               <Input name="subAdminDiscountLimitPct" type="number" min={0} max={100} defaultValue={s.subAdminDiscountLimitPct} required />
             </Field>
+            <Field label="Loyalty points per ৳100 paid" hint="0 turns loyalty off. 1 point = ৳1 off a later bill.">
+              <Input name="loyaltyPointsPer100" type="number" min={0} max={100} defaultValue={s.loyaltyPointsPer100} required />
+            </Field>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" name="subAdminCanViewDashboard" defaultChecked={s.subAdminCanViewDashboard} className="size-4 accent-gold" />
               Sub-admins can see the sales dashboard
