@@ -1,0 +1,334 @@
+// Money columns are integers in poisha (৳1 = 100). Every business table carries
+// salonId; app code reaches them only through forSalon() in src/lib/db.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  SUB_ADMIN
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SNOOZED
+  ARCHIVED
+}
+
+enum ItemType {
+  SERVICE
+  PACKAGE
+}
+
+enum DiscountType {
+  NONE
+  FLAT
+  PERCENT
+}
+
+enum InvoiceStatus {
+  PAID
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BKASH
+  NAGAD
+  OTHER
+}
+
+enum ReceiptWidth {
+  MM58
+  MM80
+  A4
+}
+
+model Salon {
+  id                       String       @id @default(cuid())
+  name                     String
+  phone                    String
+  email                    String?
+  address                  String
+  facebookUrl              String?
+  tiktokUrl                String?
+  logoUrl                  String?
+  invoicePrefix            String       @default("INV")
+  invoiceFooter            String?
+  invoiceSeq               Int          @default(0)
+  currency                 String       @default("BDT")
+  reminderDays             Int          @default(90)
+  subAdminDiscountLimitPct Int          @default(10)
+  subAdminCanViewDashboard Boolean      @default(false)
+  receiptWidth             ReceiptWidth @default(MM80)
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  branches  Branch[]
+  users     User[]
+  staff     StaffMember[]
+  customers Customer[]
+  services  Service[]
+  packages  Package[]
+  invoices  Invoice[]
+}
+
+model Branch {
+  id           String   @id @default(cuid())
+  salonId      String
+  name         String
+  address      String
+  phone        String?
+  // { "sun": ["10:00","22:00"], ... }
+  openingHours Json?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  salon    Salon         @relation(fields: [salonId], references: [id])
+  users    User[]
+  staff    StaffMember[]
+  invoices Invoice[]
+
+  @@index([salonId])
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  salonId            String
+  // null = can work at every branch
+  branchId           String?
+  name               String
+  phone              String    @unique
+  email              String?   @unique
+  passwordHash       String
+  role               Role
+  active             Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  salon    Salon     @relation(fields: [salonId], references: [id])
+  branch   Branch?   @relation(fields: [branchId], references: [id])
+  sessions Session[]
+
+  @@index([salonId])
+}
+
+model Session {
+  // sha256 of the cookie token; the raw token is never stored
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LoginAttempt {
+  id         String   @id @default(cuid())
+  identifier String
+  ip         String
+  success    Boolean
+  createdAt  DateTime @default(now())
+
+  @@index([ip, createdAt])
+}
+
+model StaffMember {
+  id        String   @id @default(cuid())
+  salonId   String
+  branchId  String?
+  name      String
+  phone     String?
+  title     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  salon  Salon         @relation(fields: [salonId], references: [id])
+  branch Branch?       @relation(fields: [branchId], references: [id])
+  items  InvoiceItem[]
+
+  @@index([salonId])
+}
+
+model Customer {
+  id             String         @id @default(cuid())
+  salonId        String
+  phone          String
+  name           String
+  address        String?
+  gender         String?
+  dob            DateTime?      @db.Date
+  notes          String?
+  status         CustomerStatus @default(ACTIVE)
+  snoozedUntil   DateTime?
+  archivedReason String?
+  lastVisitAt    DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  salon    Salon     @relation(fields: [salonId], references: [id])
+  invoices Invoice[]
+
+  @@unique([salonId, phone])
+  @@index([salonId, lastVisitAt])
+  @@index([salonId, name])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  salonId     String
+  name        String
+  category    String
+  price       Int
+  durationMin Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  salon        Salon         @relation(fields: [salonId], references: [id])
+  packageItems PackageItem[]
+
+  @@index([salonId])
+}
+
+model Package {
+  id        String   @id @default(cuid())
+  salonId   String
+  name      String
+  price     Int
+  // built at the billing counter; hidden from the catalog unless saved
+  isCustom  Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  salon Salon         @relation(fields: [salonId], references: [id])
+  items PackageItem[]
+
+  @@index([salonId])
+}
+
+model PackageItem {
+  id        String @id @default(cuid())
+  salonId   String
+  packageId String
+  serviceId String
+  qty       Int    @default(1)
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([packageId])
+}
+
+model PriceHistory {
+  id          String   @id @default(cuid())
+  salonId     String
+  itemType    ItemType
+  itemId      String
+  itemName    String
+  oldPrice    Int
+  newPrice    Int
+  changedById String
+  changedAt   DateTime @default(now())
+
+  @@index([salonId, changedAt])
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  salonId           String
+  branchId          String
+  number            String
+  customerId        String
+  createdById       String
+  subtotal          Int
+  discountType      DiscountType  @default(NONE)
+  // poisha for FLAT, whole percent for PERCENT
+  discountValue     Int           @default(0)
+  discountAmount    Int           @default(0)
+  discountNote      String?
+  total             Int
+  status            InvoiceStatus @default(PAID)
+  voidReason        String?
+  voidedById        String?
+  voidedAt          DateTime?
+  voidRequestedAt   DateTime?
+  voidRequestReason String?
+  voidRequestedById String?
+  createdAt         DateTime      @default(now())
+
+  salon    Salon         @relation(fields: [salonId], references: [id])
+  branch   Branch        @relation(fields: [branchId], references: [id])
+  customer Customer      @relation(fields: [customerId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@unique([salonId, number])
+  @@index([salonId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model InvoiceItem {
+  id            String   @id @default(cuid())
+  salonId       String
+  invoiceId     String
+  itemType      ItemType
+  itemId        String
+  nameSnapshot  String
+  unitPrice     Int
+  // list value of the line (sum of component service prices for a custom package)
+  listPrice     Int
+  qty           Int      @default(1)
+  lineTotal     Int
+  staffMemberId String?
+
+  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  staffMember StaffMember? @relation(fields: [staffMemberId], references: [id])
+
+  @@index([invoiceId])
+  @@index([salonId, itemType, itemId])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  salonId   String
+  invoiceId String
+  method    PaymentMethod
+  amount    Int
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  salonId   String?
+  userId    String?
+  userName  String?
+  action    String
+  entity    String?
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([salonId, createdAt])
+}

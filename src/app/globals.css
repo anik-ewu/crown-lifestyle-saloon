@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-gold: #b8912f;
+  --color-gold-dark: #8a6a1c;
+  --color-gold-light: #f4e9c8;
+  --color-ink: #16130f;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: #f7f6f3;
+  color: #1c1917;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
