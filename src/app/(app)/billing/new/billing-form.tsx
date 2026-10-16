@@ -209,7 +209,7 @@ export function BillingForm({
                   {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </Select>
                 {payments.length === 1 ? (
-                  <span className={`${inputClass} text-right tabular-nums`}>{money(total)}</span>
+                  <span className={`${inputClass} w-full text-right tabular-nums`}>{money(total)}</span>
                 ) : (
                   <Input
                     aria-label="Amount"

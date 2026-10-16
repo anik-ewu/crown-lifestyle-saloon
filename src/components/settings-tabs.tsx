@@ -3,6 +3,7 @@ import Link from "next/link";
 const TABS = [
   { href: "/settings", label: "Salon" },
   { href: "/settings/users", label: "Sub-admins" },
+  { href: "/settings/audit", label: "Audit log" },
 ];
 
 export function SettingsTabs({ active, extra = [] }: { active: string; extra?: { href: string; label: string }[] }) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteCustomer, updateCustomer } from "@/app/actions/customers";
+import { restoreCustomer } from "@/app/actions/reminders";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { CustomerStatusBadge, InvoiceStatusBadge } from "@/components/badges";
 import { CustomerFields } from "@/components/forms/customer-fields";
@@ -14,7 +15,7 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
   const c = await ctx.db.customer.findUnique({ where: { id } });
   if (!c || c.deletedAt) notFound();
 
-  const [invoices, totals] = await Promise.all([
+  const [invoices, totals, calls] = await Promise.all([
     ctx.db.invoice.findMany({
       where: { customerId: id },
       orderBy: { createdAt: "desc" },
@@ -22,6 +23,7 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
       include: { items: { include: { staffMember: true } }, payments: true },
     }),
     ctx.db.invoice.aggregate({ where: { customerId: id, status: "PAID" }, _sum: { total: true }, _count: true }),
+    ctx.db.reminderLog.findMany({ where: { customerId: id }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
   return (
@@ -73,6 +75,26 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
             ))}
           </tbody>
         </Table>
+      )}
+
+      {(calls.length > 0 || c.status !== "ACTIVE") && (
+        <Card title="Reminder calls" className="mt-8" actions={c.status !== "ACTIVE" && (
+          <ActionForm action={restoreCustomer} showMessage={false}>
+            <input type="hidden" name="customerId" value={c.id} />
+            <SubmitButton variant="secondary" size="sm">Make active</SubmitButton>
+          </ActionForm>
+        )}>
+          {c.status === "SNOOZED" && c.snoozedUntil && <p className="mb-2 text-sm">Snoozed until {formatDate(c.snoozedUntil)}.</p>}
+          {c.status === "ARCHIVED" && <p className="mb-2 text-sm">Archived ({c.archivedReason?.replace("_", " ") ?? "no reason"}).</p>}
+          <ul className="divide-y divide-stone-100 text-sm">
+            {calls.map((r) => (
+              <li key={r.id} className="py-1.5">
+                {formatDateTime(r.createdAt)} · {r.calledByName} · {r.outcome.replace("_", " ").toLowerCase()}
+                {r.note && <span className="text-stone-600"> · “{r.note}”</span>}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

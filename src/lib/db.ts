@@ -28,6 +28,7 @@ const TENANT_MODELS = new Set([
   "InvoiceItem",
   "Payment",
   "AuditLog",
+  "ReminderLog",
 ]);
 
 /**

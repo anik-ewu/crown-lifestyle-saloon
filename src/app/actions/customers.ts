@@ -57,6 +57,10 @@ export async function deleteCustomer(_: ActionState, fd: FormData): Promise<Acti
     },
   });
   await audit(ctx, "customer.delete", "Customer", id);
+  if (fd.get("back") === "reminders") {
+    revalidatePath("/reminders");
+    return ok("Customer deleted.");
+  }
   redirect("/customers?deleted=1");
 }
 

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { forSalon, prisma } from "@/lib/db";
 import { normalizePhone } from "@/lib/format";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { verifyTotp } from "@/lib/totp";
 
 export { hashPassword, verifyPassword };
 import type { Role } from "@/generated/prisma/client";
@@ -49,7 +50,7 @@ export async function clientIp(): Promise<string> {
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, verified = true) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const h = await headers();
@@ -57,7 +58,9 @@ export async function createSession(userId: string) {
     data: {
       id: hashToken(token),
       userId,
-      expiresAt,
+      verified,
+      // an unverified (waiting for 2FA) session only lives 10 minutes
+      expiresAt: verified ? expiresAt : new Date(Date.now() + 10 * 60 * 1000),
       ip: await clientIp(),
       userAgent: h.get("user-agent")?.slice(0, 200),
     },
@@ -82,7 +85,7 @@ export async function destroyAllSessions(userId: string) {
   await prisma.session.deleteMany({ where: { userId } });
 }
 
-const loadSession = cache(async () => {
+const loadAnySession = cache(async () => {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
   const session = await prisma.session.findUnique({
@@ -92,6 +95,44 @@ const loadSession = cache(async () => {
   if (!session || session.expiresAt < new Date() || !session.user.active) return null;
   return session;
 });
+
+const loadSession = cache(async () => {
+  const session = await loadAnySession();
+  return session?.verified ? session : null;
+});
+
+/** A signed-in session still waiting for its 2FA code. */
+export async function getPendingSession() {
+  const session = await loadAnySession();
+  return session && !session.verified ? session : null;
+}
+
+/** Marks the pending session verified when the code is right. */
+export async function completeSecondFactor(code: string): Promise<LoginResult> {
+  const session = await getPendingSession();
+  if (!session) return { ok: false, error: "Your sign-in expired. Start again." };
+  const ip = await clientIp();
+  const identifier = `2fa:${session.userId}`;
+  const since = new Date(Date.now() - 15 * 60 * 1000);
+  const failures = await prisma.loginAttempt.count({ where: { identifier, success: false, createdAt: { gte: since } } });
+  if (failures >= MAX_FAILED_LOGINS) {
+    await destroySession();
+    return { ok: false, error: "Too many wrong codes. Sign in again in 15 minutes." };
+  }
+  if (!session.user.totpSecret || !verifyTotp(session.user.totpSecret, code)) {
+    await prisma.loginAttempt.create({ data: { identifier, ip, success: false } });
+    return { ok: false, error: "Wrong code. Check the time on your phone and try again." };
+  }
+  await prisma.loginAttempt.create({ data: { identifier, ip, success: true } });
+  await prisma.session.update({
+    where: { id: session.id },
+    data: { verified: true, expiresAt: new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000) },
+  });
+  await prisma.auditLog.create({
+    data: { salonId: session.user.salonId, userId: session.userId, userName: session.user.name, action: "auth.login", ip, meta: { twoFactor: true } },
+  });
+  return { ok: true };
+}
 
 export type Ctx = NonNullable<Awaited<ReturnType<typeof getContext>>>;
 
@@ -109,6 +150,7 @@ export const getContext = cache(async () => {
       role: user.role,
       branchId: user.branchId,
       mustChangePassword: user.mustChangePassword,
+      twoFactorEnabled: user.twoFactorEnabled,
     },
     salon: user.salon,
     db: forSalon(user.salonId),
@@ -139,7 +181,7 @@ export function canViewDashboard(ctx: Ctx): boolean {
 
 // ---------- login ----------
 
-export type LoginResult = { ok: true } | { ok: false; error: string };
+export type LoginResult = { ok: true; needsCode?: boolean } | { ok: false; error: string };
 
 export async function attemptLogin(identifier: string, password: string): Promise<LoginResult> {
   const ip = await clientIp();
@@ -199,6 +241,10 @@ export async function attemptLogin(identifier: string, password: string): Promis
     data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
   await record(true);
+  if (user.twoFactorEnabled && user.totpSecret) {
+    await createSession(user.id, false);
+    return { ok: true, needsCode: true };
+  }
   await prisma.auditLog.create({
     data: { salonId: user.salonId, userId: user.id, userName: user.name, action: "auth.login", ip },
   });

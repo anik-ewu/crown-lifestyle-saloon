@@ -5,6 +5,7 @@ import { z } from "zod";
 import { fail, parseForm, type ActionState } from "@/lib/action";
 import {
   attemptLogin,
+  completeSecondFactor,
   destroyAllSessions,
   destroySession,
   createSession,
@@ -26,7 +27,7 @@ export async function loginAction(_: ActionState, fd: FormData): Promise<ActionS
   if (!parsed.ok) return fail(parsed.error);
   const result = await attemptLogin(parsed.data.identifier, parsed.data.password);
   if (!result.ok) return fail(result.error);
-  redirect("/");
+  redirect(result.needsCode ? "/login/verify" : "/");
 }
 
 export async function logoutAction() {
@@ -62,4 +63,11 @@ export async function changePasswordAction(_: ActionState, fd: FormData): Promis
   await createSession(user.id);
   await audit(ctx, "auth.password_changed", "User", user.id);
   redirect("/?password=changed");
+}
+
+export async function verifyCodeAction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const code = String(fd.get("code") ?? "").slice(0, 10);
+  const result = await completeSecondFactor(code);
+  if (!result.ok) return fail(result.error);
+  redirect("/");
 }

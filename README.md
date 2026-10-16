@@ -50,7 +50,8 @@ src/app/print/…           printable receipts (58 mm / 80 mm / A4)
 - Every page and action calls `requireUser()` or `requireAdmin()`.
 - Database access goes through `ctx.db`, which adds `salonId` to every query.
 - Prices are read from the database at billing time and never trusted from the browser.
-- Logins lock for 15 minutes after 5 wrong passwords, and failed attempts are also rate-limited per IP.
+- Logins lock for 15 minutes after 5 wrong passwords, and failed attempts are also rate-limited per IP. Any user can turn on two-step sign in (an authenticator app code) from **My account**. `npx tsx --conditions=react-server scripts/check-totp.ts` checks the code generator against the RFC 6238 test vectors.
+- CSV exports are admin-only, recorded in the audit log, and protected against spreadsheet formula injection.
 - Sessions are httpOnly cookies, and only a hash of each token is stored.
 - Security headers, including a CSP, are set in `next.config.ts`.
 

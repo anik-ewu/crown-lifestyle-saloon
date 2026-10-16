@@ -13,6 +13,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/billing/new", label: "New bill" },
     { href: "/invoices", label: "Invoices" },
     { href: "/customers", label: "Customers" },
+    { href: "/reminders", label: "Reminders" },
+    { href: "/reports/closing", label: "Daily closing" },
     ...(admin
       ? [
           { href: "/catalog/services", label: "Services", section: "Manage" },
@@ -48,7 +50,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <p className="truncate font-medium text-stone-200">{ctx.user.name}</p>
           <p className="text-xs text-stone-500">{admin ? "Admin" : "Sub-admin"}</p>
           <div className="mt-2 flex gap-3 text-xs">
-            <Link href="/change-password" className="text-stone-400 hover:text-white">Password</Link>
+            <Link href="/account" className="text-stone-400 hover:text-white">My account</Link>
             <form action={logoutAction}>
               <button className="text-stone-400 hover:text-white">Sign out</button>
             </form>
