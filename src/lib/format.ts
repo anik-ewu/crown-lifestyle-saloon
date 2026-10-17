@@ -6,6 +6,7 @@ const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
 
 /** ৳1,250 or ৳1,250.50 from poisha. */
 export function money(poisha: number): string {
+  if (poisha < 0) return "−" + money(-poisha);
   const taka = poisha / 100;
   const hasFraction = poisha % 100 !== 0;
   return (

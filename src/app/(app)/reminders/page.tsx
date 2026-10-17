@@ -2,7 +2,7 @@ import Link from "next/link";
 import { archiveCustomer, logCall, restoreCustomer } from "@/app/actions/reminders";
 import { deleteCustomer } from "@/app/actions/customers";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Badge, Empty, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Empty, Input, PageHeader, RowActions, Select } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { daysBetween, displayPhone, formatDate, money, whatsappLink } from "@/lib/format";
 import { dueWhere } from "@/lib/reminders";
@@ -83,7 +83,7 @@ export default async function RemindersPage({ searchParams }: PageProps<"/remind
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <Link href={`/customers/${c.id}`} className="font-medium hover:underline">{c.name}</Link>
-                    <a href={`tel:${c.phone}`} className="ml-3 font-medium tabular-nums text-gold-dark hover:underline">{displayPhone(c.phone)}</a>
+                    <a href={`tel:${c.phone}`} className="ml-3 whitespace-nowrap font-medium tabular-nums text-gold-dark hover:underline">{displayPhone(c.phone)}</a>
                     <a
                       href={whatsappLink(c.phone, `Hi ${c.name.split(" ")[0]}, we miss you at ${ctx.salon.name}! It's been a while since your last visit. Call ${ctx.salon.phone} to book your next appointment.`)}
                       target="_blank"
@@ -106,7 +106,7 @@ export default async function RemindersPage({ searchParams }: PageProps<"/remind
                     {tab === "archived" && <p className="mt-1 text-xs"><Badge>{ARCHIVE_REASONS[c.archivedReason ?? "other"] ?? c.archivedReason}</Badge></p>}
                   </div>
                   {tab === "archived" && (
-                    <ActionForm action={restoreCustomer}>
+                    <ActionForm action={restoreCustomer} className="flex items-center">
                       <input type="hidden" name="customerId" value={c.id} />
                       <SubmitButton variant="secondary" size="sm">Restore</SubmitButton>
                     </ActionForm>
@@ -114,22 +114,22 @@ export default async function RemindersPage({ searchParams }: PageProps<"/remind
                 </div>
 
                 {tab !== "archived" && (
-                  <div className="mt-3 grid gap-3 border-t border-stone-100 pt-3 lg:grid-cols-[1fr_auto]">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
                     <ActionForm action={logCall} resetOnSuccess className="flex flex-wrap items-center gap-2">
                       <input type="hidden" name="customerId" value={c.id} />
-                      <Select name="outcome" className="w-auto" aria-label="Call outcome">
+                      <Select name="outcome" compact className="w-auto" aria-label="Call outcome">
                         {Object.entries(OUTCOMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </Select>
-                      <Input name="note" placeholder="Note (optional)" className="max-w-xs" maxLength={500} />
-                      <label className="flex items-center gap-1.5 text-sm">
+                      <Input name="note" placeholder="Note (optional)" compact className="w-48" maxLength={500} />
+                      <label className="flex h-8 items-center gap-1.5 text-sm">
                         <input type="checkbox" name="snooze" defaultChecked className="size-4 accent-gold" /> Snooze {ctx.salon.reminderDays} days
                       </label>
                       <SubmitButton size="sm">Log call</SubmitButton>
                     </ActionForm>
-                    <div className="flex flex-wrap items-start gap-2">
-                      <ActionForm action={archiveCustomer} className="flex gap-2">
+                    <RowActions>
+                      <ActionForm action={archiveCustomer}>
                         <input type="hidden" name="customerId" value={c.id} />
-                        <Select name="reason" className="w-auto py-1 text-sm" aria-label="Archive reason">
+                        <Select name="reason" compact className="w-auto" aria-label="Archive reason">
                           {Object.entries(ARCHIVE_REASONS).filter(([k]) => k !== "deleted").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </Select>
                         <SubmitButton variant="secondary" size="sm">Archive</SubmitButton>
@@ -141,7 +141,7 @@ export default async function RemindersPage({ searchParams }: PageProps<"/remind
                           <SubmitButton variant="danger" size="sm">Delete</SubmitButton>
                         </ActionForm>
                       )}
-                    </div>
+                    </RowActions>
                   </div>
                 )}
               </div>

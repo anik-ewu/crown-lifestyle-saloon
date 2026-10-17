@@ -183,7 +183,8 @@ export const requireAdmin = () => requireUser({ role: "ADMIN" });
 
 export function isPlatformAdmin(ctx: Ctx): boolean {
   const phones = (process.env.PLATFORM_ADMIN_PHONES ?? "").split(",").map((p) => normalizePhone(p)).filter(Boolean);
-  return ctx.isAdmin && phones.includes(ctx.user.phone);
+  // only admins of the owner's own (INTERNAL) workspace, never a client salon
+  return ctx.isAdmin && ctx.salon.plan === "INTERNAL" && phones.includes(ctx.user.phone);
 }
 
 export async function requirePlatformAdmin(): Promise<Ctx> {

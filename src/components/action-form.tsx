@@ -44,12 +44,12 @@ export function ActionForm({
     >
       {children}
       {showMessage && state.error && (
-        <div className="mt-3">
+        <div className="col-span-full mt-3 basis-full">
           <Notice tone="error">{state.error}</Notice>
         </div>
       )}
       {showMessage && state.ok && state.message && (
-        <div className="mt-3">
+        <div className="col-span-full mt-3 basis-full">
           <Notice tone="success">
             {state.message}
             {state.secret && (

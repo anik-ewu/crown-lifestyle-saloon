@@ -1,10 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { signupAction, signupEnabled } from "@/app/actions/signup";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field, Input } from "@/components/ui";
 import { getContext } from "@/lib/auth";
+import { APP_NAME } from "@/lib/brand";
 import { PLANS, TRIAL_DAYS } from "@/lib/plans";
 
 export const metadata = { title: "Start your free trial" };
@@ -16,8 +16,9 @@ export default async function SignupPage() {
     <main className="min-h-screen bg-ink px-4 py-10">
       <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-2">
         <div className="text-stone-200">
-          <Image src="/logo.jpg" alt="" width={72} height={72} className="rounded-full" />
-          <h1 className="mt-4 text-2xl font-semibold text-gold-light">Salon manager for Bangladesh</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand.svg" alt="" width={56} height={56} className="rounded-xl" />
+          <h1 className="mt-4 text-2xl font-semibold text-gold-light">{APP_NAME}: salon management for Bangladesh</h1>
           <p className="mt-2 text-stone-400">Billing, customer history, reminders for lapsed customers, sales reports. Works in any browser.</p>
           <ul className="mt-6 space-y-2 text-sm">
             <li>✓ {TRIAL_DAYS}-day free trial, no payment needed</li>

@@ -7,7 +7,7 @@ import { clientIp, createSession, hashPassword, passwordProblem } from "@/lib/au
 import { prisma } from "@/lib/db";
 import { TRIAL_DAYS } from "@/lib/plans";
 import { phoneField } from "@/lib/schemas";
-import { STARTER_SERVICES } from "@/lib/starter";
+import { createSalonWithOwner } from "@/lib/onboarding";
 
 export async function signupEnabled() {
   return process.env.ALLOW_SIGNUP === "true";
@@ -43,28 +43,21 @@ export async function signupAction(_: ActionState, fd: FormData): Promise<Action
   if (await prisma.user.findUnique({ where: { phone: d.phone } })) return fail("This phone number already has an account. Sign in instead.");
   if (await prisma.user.findUnique({ where: { email: d.email } })) return fail("This email already has an account.");
 
-  const prefix = d.salonName.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "INV";
   const user = await prisma.$transaction(async (tx) => {
-    const salon = await tx.salon.create({
-      data: {
-        name: d.salonName,
-        phone: d.phone,
-        email: d.email,
-        address: d.address,
-        invoicePrefix: prefix,
-        plan: "TRIAL",
-        trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
-        branches: { create: { name: "Main", address: d.address, phone: d.phone } },
-      },
+    const { salon, owner } = await createSalonWithOwner(tx, {
+      salonName: d.salonName,
+      address: d.address,
+      salonPhone: d.phone,
+      ownerName: d.ownerName,
+      ownerPhone: d.phone,
+      ownerEmail: d.email,
+      passwordHash: await hashPassword(d.password),
+      mustChangePassword: false,
+      plan: "TRIAL",
+      trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
     });
-    await tx.service.createMany({
-      data: STARTER_SERVICES.map(([category, name, taka]) => ({ salonId: salon.id, category, name, price: taka * 100 })),
-    });
-    const user = await tx.user.create({
-      data: { salonId: salon.id, name: d.ownerName, phone: d.phone, email: d.email, role: "ADMIN", passwordHash: await hashPassword(d.password) },
-    });
-    await tx.auditLog.create({ data: { salonId: salon.id, userId: user.id, userName: user.name, action: "salon.signup", ip } });
-    return user;
+    await tx.auditLog.create({ data: { salonId: salon.id, userId: owner.id, userName: owner.name, action: "salon.signup", ip } });
+    return owner;
   });
   await createSession(user.id);
   redirect("/settings?welcome=1");

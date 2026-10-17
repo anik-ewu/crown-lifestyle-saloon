@@ -116,9 +116,9 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
             {ctx.isAdmin ? (
               <>
                 <p className="mb-3 text-sm text-stone-600">A voided invoice stays on record but is left out of sales.</p>
-                <ActionForm action={voidInvoice} confirm="Void this invoice?" className="space-y-2">
+                <ActionForm action={voidInvoice} confirm="Void this invoice?" className="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="id" value={inv.id} />
-                  <Input name="reason" required minLength={3} placeholder="Reason" defaultValue={inv.voidRequestReason ?? ""} />
+                  <Input name="reason" required minLength={3} placeholder="Reason" defaultValue={inv.voidRequestReason ?? ""} className="min-w-0 flex-1" />
                   <SubmitButton variant="danger">Void invoice</SubmitButton>
                 </ActionForm>
                 {inv.voidRequestedAt && (
@@ -131,9 +131,9 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
             ) : inv.voidRequestedAt ? (
               <p className="text-sm text-stone-600">Waiting for an admin.</p>
             ) : (
-              <ActionForm action={requestVoid} className="space-y-2">
+              <ActionForm action={requestVoid} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={inv.id} />
-                <Input name="reason" required minLength={3} placeholder="What went wrong?" />
+                <Input name="reason" required minLength={3} placeholder="What went wrong?" className="min-w-0 flex-1" />
                 <SubmitButton variant="secondary">Ask admin to void</SubmitButton>
               </ActionForm>
             )}

@@ -1,99 +1,153 @@
-import { adjustSalonPlan, reviewSubscriptionPayment } from "@/app/actions/subscription";
+import { adjustSalonPlan, createClientSalon, resetSalonOwnerPassword, reviewSubscriptionPayment } from "@/app/actions/platform";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Badge, Card, Empty, Input, PageHeader, Select, Stat, Table } from "@/components/ui";
+import { Badge, Card, Field, Input, ListRow, PageHeader, Select, Stat } from "@/components/ui";
 import { requirePlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { daysAgo, formatDate, formatDateTime, money } from "@/lib/format";
+import { daysAgo, displayPhone, formatDate, formatDateTime, money } from "@/lib/format";
 import { PLANS, subscriptionState } from "@/lib/plans";
 
 export const metadata = { title: "Platform" };
 
+const toInputDate = (d: Date | null) => (d ? new Date(d.getTime() + 6 * 3600 * 1000).toISOString().slice(0, 10) : "");
+
 // Cross-salon view for the platform owner. Uses the unscoped client on purpose.
 export default async function PlatformPage() {
-  await requirePlatformAdmin();
+  const ctx = await requirePlatformAdmin();
   const since = daysAgo(30);
   const [salons, pending, activity] = await Promise.all([
     prisma.salon.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { _count: { select: { users: true, customers: true, branches: true } } },
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { customers: true, branches: true } },
+        users: { where: { role: "ADMIN" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, phone: true, lastLoginAt: true } },
+      },
     }),
     prisma.subscriptionPayment.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" }, include: { salon: { select: { name: true } } } }),
     prisma.invoice.groupBy({ by: ["salonId"], where: { createdAt: { gte: since }, status: "PAID" }, _count: true }),
   ]);
   const bills = new Map(activity.map((a) => [a.salonId, a._count]));
-  const paying = salons.filter((s) => (s.plan === "BASIC" || s.plan === "PRO") && !subscriptionState(s).readOnly);
+  const clients = salons.filter((s) => s.plan !== "INTERNAL");
+  const paying = clients.filter((s) => (s.plan === "BASIC" || s.plan === "PRO") && !subscriptionState(s).readOnly);
   const mrr = paying.reduce((sum, s) => sum + PLANS[s.plan].monthlyTaka, 0);
 
   return (
     <>
-      <PageHeader title="Platform" description="All salons on this installation, plans and payments." />
+      <PageHeader title="Platform" description="Your client salons, their plans and payments." />
       <div className="mb-6 grid gap-3 sm:grid-cols-4">
-        <Stat label="Salons" value={salons.length} />
-        <Stat label="On trial" value={salons.filter((s) => s.plan === "TRIAL" && !subscriptionState(s).readOnly).length} />
-        <Stat label="Paying" value={paying.length} />
-        <Stat label="Monthly revenue" value={money(mrr * 100)} sub="from active paid plans" />
+        <Stat label="Client salons" value={clients.length} />
+        <Stat label="On trial" value={clients.filter((s) => s.plan === "TRIAL" && !subscriptionState(s).readOnly).length} />
+        <Stat label="On Basic / Pro" value={paying.length} />
+        <Stat label="Monthly value" value={money(mrr * 100)} sub="list price of active plans, incl. free periods" />
       </div>
+
+      <Card title="Add salon" className="mb-6">
+        <p className="mb-4 text-sm text-stone-600">
+          Creates the salon with a Main branch and starter services, plus the owner&apos;s admin login. Give the owner the one-time password; they choose their own at first sign-in and then add their staff.
+        </p>
+        <ActionForm action={createClientSalon} resetOnSuccess className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Salon name"><Input name="salonName" required /></Field>
+          <Field label="Salon phone"><Input name="salonPhone" required inputMode="tel" /></Field>
+          <Field label="Address" className="sm:col-span-2"><Input name="address" required /></Field>
+          <Field label="Owner name"><Input name="ownerName" required /></Field>
+          <Field label="Owner mobile (sign-in)"><Input name="ownerPhone" required inputMode="tel" placeholder="01XXXXXXXXX" /></Field>
+          <Field label="Owner email (optional)"><Input name="ownerEmail" type="email" /></Field>
+          <Field label="Plan">
+            <Select name="plan" defaultValue="PRO">
+              <option value="TRIAL">Free trial</option>
+              <option value="BASIC">Basic</option>
+              <option value="PRO">Pro</option>
+            </Select>
+          </Field>
+          <Field label="Paid / free until"><Input name="until" type="date" /></Field>
+          <p className="self-center text-xs text-stone-500 sm:col-span-2">
+            For a free period (like Crown), pick Pro and the date charging starts. For a trial, leave the date blank for 14 days.
+          </p>
+          <div className="flex justify-end sm:col-span-2 lg:col-span-4"><SubmitButton>Add salon</SubmitButton></div>
+        </ActionForm>
+      </Card>
 
       <Card title={`Payments to check (${pending.length})`} className="mb-6">
         {pending.length === 0 ? (
           <p className="text-sm text-stone-500">Nothing waiting.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {pending.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 p-3 text-sm">
-                <div>
-                  <p className="font-medium">{p.salon.name} · {PLANS[p.plan].label} × {p.months} month{p.months === 1 ? "" : "s"} · {money(p.amount)}</p>
-                  <p className="text-stone-500">bKash TrxID <span className="font-mono">{p.trxId}</span> · {formatDateTime(p.createdAt)} · by {p.submittedBy}</p>
-                </div>
-                <ActionForm action={reviewSubscriptionPayment} className="flex gap-2">
-                  <input type="hidden" name="id" value={p.id} />
-                  <Input name="note" placeholder="Note (optional)" className="w-40" />
-                  <SubmitButton name="decision" value="approve" size="sm">Approve</SubmitButton>
-                  <SubmitButton name="decision" value="reject" size="sm" variant="danger">Reject</SubmitButton>
-                </ActionForm>
-              </div>
+              <ListRow
+                key={p.id}
+                title={<>{p.salon.name} · {PLANS[p.plan].label} × {p.months} month{p.months === 1 ? "" : "s"} · {money(p.amount)}</>}
+                meta={<>bKash TrxID <span className="font-mono">{p.trxId}</span> · {formatDateTime(p.createdAt)} · by {p.submittedBy}</>}
+                actions={
+                  <ActionForm action={reviewSubscriptionPayment}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <Input name="note" placeholder="Note (optional)" compact className="w-40" />
+                    <SubmitButton name="decision" value="approve" size="sm">Approve</SubmitButton>
+                    <SubmitButton name="decision" value="reject" size="sm" variant="danger">Reject</SubmitButton>
+                  </ActionForm>
+                }
+              />
             ))}
           </div>
         )}
       </Card>
 
-      {salons.length === 0 ? <Empty>No salons.</Empty> : (
-        <Table>
-          <thead><tr><th>Salon</th><th>Plan</th><th>Status</th><th className="text-right">Users</th><th className="text-right">Customers</th><th className="text-right">Bills 30d</th><th>Joined</th><th>Adjust</th></tr></thead>
-          <tbody>
-            {salons.map((s) => {
-              const st = subscriptionState(s);
-              return (
-                <tr key={s.id}>
-                  <td><p className="font-medium">{s.name}</p><p className="text-xs text-stone-500">{s.phone}</p></td>
-                  <td>{PLANS[s.plan].label}</td>
-                  <td>
-                    {st.readOnly ? <Badge color="red">Read-only</Badge> : <Badge color="green">Active</Badge>}
-                    <p className="text-xs text-stone-500">
-                      {s.plan === "TRIAL" && s.trialEndsAt && `trial to ${formatDate(s.trialEndsAt)}`}
-                      {s.paidUntil && `paid to ${formatDate(s.paidUntil)}`}
-                    </p>
-                  </td>
-                  <td className="text-right tabular-nums">{s._count.users}</td>
-                  <td className="text-right tabular-nums">{s._count.customers}</td>
-                  <td className="text-right tabular-nums">{bills.get(s.id) ?? 0}</td>
-                  <td className="whitespace-nowrap">{formatDate(s.createdAt)}</td>
-                  <td>
-                    <ActionForm action={adjustSalonPlan} className="flex gap-1">
+      <h2 className="mb-2 font-semibold">Salons</h2>
+      <div className="space-y-2">
+        {salons.map((s) => {
+          const st = subscriptionState(s);
+          const owner = s.users[0];
+          const isHome = s.id === ctx.salon.id;
+          return (
+            <ListRow
+              key={s.id}
+              title={
+                <>
+                  {s.name}
+                  <Badge color="gold">{PLANS[s.plan].label}</Badge>
+                  {st.readOnly ? <Badge color="red">Read-only</Badge> : <Badge color="green">Active</Badge>}
+                  {isHome && <Badge>Your workspace</Badge>}
+                </>
+              }
+              meta={
+                <>
+                  {owner ? `${owner.name} · ${displayPhone(owner.phone)} · last sign-in ${owner.lastLoginAt ? formatDate(owner.lastLoginAt) : "never"}` : "No owner"}
+                  {" · "}{s._count.branches} branch{s._count.branches === 1 ? "" : "es"} · {s._count.customers} customers · {bills.get(s.id) ?? 0} bills in 30 days
+                  {s.plan === "TRIAL" && s.trialEndsAt && ` · trial until ${formatDate(s.trialEndsAt)}`}
+                  {(s.plan === "BASIC" || s.plan === "PRO") && s.paidUntil && ` · paid/free until ${formatDate(s.paidUntil)}`}
+                </>
+              }
+              actions={
+                !isHome && (
+                  <>
+                    <ActionForm action={adjustSalonPlan}>
                       <input type="hidden" name="salonId" value={s.id} />
-                      <Select name="plan" defaultValue={s.plan} className="w-auto py-1 text-xs" aria-label="Plan">
-                        {Object.entries(PLANS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      <Select name="plan" defaultValue={s.plan} compact className="w-auto" aria-label="Plan">
+                        <option value="TRIAL">Free trial</option>
+                        <option value="BASIC">Basic</option>
+                        <option value="PRO">Pro</option>
                       </Select>
-                      <Input name="extendDays" type="number" defaultValue={0} className="w-16 py-1 text-xs" aria-label="Extend days" title="Extend by days" />
-                      <SubmitButton size="sm" variant="secondary">Set</SubmitButton>
+                      <Input
+                        name="until"
+                        type="date"
+                        compact
+                        className="w-40"
+                        aria-label="Paid or free until"
+                        defaultValue={toInputDate(s.plan === "TRIAL" ? s.trialEndsAt : s.paidUntil)}
+                      />
+                      <SubmitButton size="sm" variant="secondary">Save plan</SubmitButton>
                     </ActionForm>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
+                    {owner && (
+                      <ActionForm action={resetSalonOwnerPassword} confirm={`Give ${owner.name} a new one-time password? They'll be signed out.`}>
+                        <input type="hidden" name="userId" value={owner.id} />
+                        <SubmitButton size="sm" variant="ghost">Reset owner password</SubmitButton>
+                      </ActionForm>
+                    )}
+                  </>
+                )
+              }
+            />
+          );
+        })}
+      </div>
     </>
   );
 }

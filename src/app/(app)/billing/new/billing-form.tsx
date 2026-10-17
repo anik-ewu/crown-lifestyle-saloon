@@ -152,7 +152,7 @@ export function BillingForm({
                   </div>
                   <select
                     aria-label="Served by"
-                    className={`${inputClass} col-span-6 sm:col-span-3`}
+                    className={`${inputClass} col-span-6 py-2 sm:col-span-3`}
                     value={l.staffId ?? ""}
                     onChange={(e) => update(l.key, { staffId: e.target.value || null })}
                   >
@@ -167,7 +167,7 @@ export function BillingForm({
                       type="number"
                       min={1}
                       max={20}
-                      className={`${inputClass} col-span-2`}
+                      className={`${inputClass} col-span-2 py-2`}
                       value={l.qty}
                       onChange={(e) => update(l.key, { qty: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })}
                     />
@@ -239,7 +239,7 @@ export function BillingForm({
                   {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </Select>
                 {payments.length === 1 ? (
-                  <span className={`${inputClass} w-full text-right tabular-nums`}>{money(total)}</span>
+                  <span className={`${inputClass} w-full py-2 text-right tabular-nums`}>{money(total)}</span>
                 ) : (
                   <Input
                     aria-label="Amount"

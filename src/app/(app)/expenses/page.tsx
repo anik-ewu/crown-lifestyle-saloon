@@ -60,7 +60,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <Table>
-              <thead><tr><th>Date</th><th>Category</th><th>Note</th><th className="text-right">Amount</th><th /></tr></thead>
+              <thead><tr><th>Date</th><th>Category</th><th>Note</th><th className="text-right">Amount</th><th className="w-24"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {expenses.map((e) => (
                   <tr key={e.id}>
@@ -68,10 +68,10 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/expense
                     <td>{e.category}</td>
                     <td className="text-stone-600">{e.note}</td>
                     <td className="text-right tabular-nums">{money(e.amount)}</td>
-                    <td>
-                      <ActionForm action={deleteExpense} confirm="Delete this expense?" showMessage={false}>
+                    <td className="text-right">
+                      <ActionForm action={deleteExpense} confirm="Delete this expense?" showMessage={false} className="flex justify-end">
                         <input type="hidden" name="id" value={e.id} />
-                        <button className="text-xs text-stone-400 hover:text-red-600">Delete</button>
+                        <SubmitButton variant="danger" size="sm">Delete</SubmitButton>
                       </ActionForm>
                     </td>
                   </tr>

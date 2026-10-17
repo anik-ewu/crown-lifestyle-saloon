@@ -29,6 +29,7 @@ Non-goals for v1: a native Android/iOS app, online booking by customers, a custo
 ## 2. Users & roles
 | Role | Login | Can do |
 |---|---|---|
+| **Platform owner** (you) | Phone or email + password, in your own "HQ" workspace | Everything below, plus `/platform`: add salons, set plans and free periods, approve bKash payments, reset salon owners' passwords |
 | **Admin** (owner) | Phone **or** email + password (2FA optional) | Everything |
 | **Sub-admin** (front desk / manager) | Phone + password | Daily operations only (see matrix) |
 | **Salon member** (stylist/barber) | No login in v1 | Only appears as "served by" on visits and reports |
@@ -216,6 +217,8 @@ Not built yet:
 - **SMS gateway.** Messages use free WhatsApp links instead.
 - **Postgres Row-Level Security.** The tenant filter in `forSalon()` is enforced in code.
 - **Bangla interface.**
+
+**Product vs client (decided 17 Oct 2026):** the app is a product, called "Salon Manager" for now (`NEXT_PUBLIC_APP_NAME`). Crown LifeStyle Saloon is the first client, on Pro, free until a date set on the platform page, with charging to start later. New salons are onboarded by the platform owner from `/platform`, and public sign-up stays off.
 
 ## 11. Decisions
 | Question | Decision |

@@ -1,12 +1,14 @@
 // Usage:
-//   npm run db:seed            creates the salon, Banasree branch, first admin and starter services
-//   npm run db:seed -- --demo  also adds fake staff, customers and 15 months of bills (local only)
+//   npm run db:seed            creates your platform workspace ("<APP_NAME> HQ") and your owner login
+//   npm run db:seed -- --demo  also adds "Crown LifeStyle Saloon" as a client salon with fake
+//                              staff, customers and 15 months of bills (local database only)
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { APP_NAME } from "../src/lib/brand";
 import { normalizePhone } from "../src/lib/format";
+import { createSalonWithOwner } from "../src/lib/onboarding";
 import { hashPassword } from "../src/lib/password";
-import { STARTER_SERVICES as SERVICES } from "../src/lib/starter";
 
 const url = process.env.DATABASE_URL!;
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
@@ -16,59 +18,79 @@ const HOURS = {
   thu: ["10:00", "23:00"], fri: ["10:00", "22:00"], sat: ["10:00", "23:00"],
 };
 
+function login(prefix: string) {
+  const phone = normalizePhone(process.env[`${prefix}_PHONE`] ?? "");
+  const password = process.env[`${prefix}_PASSWORD`] ?? "";
+  if (!phone || password.length < 10) throw new Error(`Set ${prefix}_PHONE and ${prefix}_PASSWORD (10+ chars) in .env`);
+  return { phone, password };
+}
 
 async function main() {
-  let salon = await prisma.salon.findFirst();
-  if (!salon) {
-    salon = await prisma.salon.create({
-      data: {
-        name: "Crown LifeStyle Saloon",
-        phone: "+880 1906-336438",
-        email: "crownlifestylesaloon@gmail.com",
-        address: "A.K Haris Villa, House #02, Road #03, Block #F, Banasree, Rampura, Dhaka-1219",
-        facebookUrl: "https://www.facebook.com/profile.php?id=61591904007465",
-        invoicePrefix: "CLS",
-        plan: "INTERNAL",
+  if (!(await prisma.salon.findFirst({ where: { plan: "INTERNAL" } }))) {
+    const { phone, password } = login("PLATFORM_OWNER");
+    if (await prisma.user.findUnique({ where: { phone } })) throw new Error(`${phone} already has an account`);
+    const { salon } = await prisma.$transaction((tx) =>
+      hashPassword(password).then((passwordHash) =>
+        createSalonWithOwner(tx, {
+          salonName: `${APP_NAME} HQ`,
+          address: "Dhaka, Bangladesh",
+          salonPhone: phone,
+          ownerName: process.env.PLATFORM_OWNER_NAME || "Platform owner",
+          ownerPhone: phone,
+          ownerEmail: process.env.PLATFORM_OWNER_EMAIL?.toLowerCase() || null,
+          passwordHash,
+          mustChangePassword: false,
+          plan: "INTERNAL",
+          invoicePrefix: "HQ",
+        }),
+      ),
+    );
+    console.log(`Created your workspace "${salon.name}" and owner login ${phone}`);
+    const admins = (process.env.PLATFORM_ADMIN_PHONES ?? "").split(",").map((p) => normalizePhone(p));
+    if (!admins.includes(phone)) console.log(`Add ${phone} to PLATFORM_ADMIN_PHONES so you can open /platform`);
+  }
+
+  if (process.argv.includes("--demo")) await demoCrown();
+}
+
+/** Crown as the first client: Pro, free for 12 months. Local only. */
+async function demoCrown() {
+  if (!/localhost|127\.0\.0\.1/.test(url)) throw new Error("--demo only runs against a local database");
+  let crown = await prisma.salon.findFirst({ where: { name: "Crown LifeStyle Saloon" } });
+  if (!crown) {
+    const { phone, password } = login("DEMO_CROWN_OWNER");
+    const address = "A.K Haris Villa, House #02, Road #03, Block #F, Banasree, Rampura, Dhaka-1219";
+    const paidUntil = new Date();
+    paidUntil.setUTCFullYear(paidUntil.getUTCFullYear() + 1);
+    const passwordHash = await hashPassword(password);
+    crown = await prisma.$transaction(async (tx) => {
+      const { salon } = await createSalonWithOwner(tx, {
+        salonName: "Crown LifeStyle Saloon",
+        address,
+        salonPhone: "+880 1906-336438",
+        salonEmail: "crownlifestylesaloon@gmail.com",
+        ownerName: "Crown owner",
+        ownerPhone: phone,
+        passwordHash,
+        mustChangePassword: false,
+        plan: "PRO",
+        paidUntil,
         logoUrl: "/logo.jpg",
-        invoiceFooter: "Thank you for visiting Crown LifeStyle Saloon!",
-        branches: {
-          create: {
-            name: "Banasree",
-            address: "A.K Haris Villa, House #02, Road #03, Block #F, Banasree, Rampura, Dhaka-1219",
-            phone: "+8801906336438",
-            openingHours: HOURS,
-          },
+        invoicePrefix: "CLS",
+      });
+      await tx.branch.updateMany({ where: { salonId: salon.id }, data: { name: "Banasree", openingHours: HOURS } });
+      return tx.salon.update({
+        where: { id: salon.id },
+        data: {
+          facebookUrl: "https://www.facebook.com/profile.php?id=61591904007465",
+          invoiceFooter: "Thank you for visiting Crown LifeStyle Saloon!",
+          loyaltyPointsPer100: 5,
         },
-      },
+      });
     });
-    console.log("Created salon", salon.name);
+    console.log(`Created client salon "${crown.name}" (Pro, free until ${paidUntil.toISOString().slice(0, 10)}), owner ${phone}`);
   }
-
-  const phone = normalizePhone(process.env.SEED_ADMIN_PHONE ?? "");
-  const password = process.env.SEED_ADMIN_PASSWORD ?? "";
-  if (!phone || password.length < 10) throw new Error("Set SEED_ADMIN_PHONE and SEED_ADMIN_PASSWORD (10+ chars) in .env");
-  if (!(await prisma.user.findUnique({ where: { phone } }))) {
-    await prisma.user.create({
-      data: {
-        salonId: salon.id,
-        name: "Owner",
-        phone,
-        email: process.env.SEED_ADMIN_EMAIL?.toLowerCase() || null,
-        role: "ADMIN",
-        passwordHash: await hashPassword(password),
-      },
-    });
-    console.log("Created admin", phone);
-  }
-
-  if ((await prisma.service.count({ where: { salonId: salon.id } })) === 0) {
-    await prisma.service.createMany({
-      data: SERVICES.map(([category, name, taka]) => ({ salonId: salon.id, category, name, price: taka * 100 })),
-    });
-    console.log(`Added ${SERVICES.length} starter services`);
-  }
-
-  if (process.argv.includes("--demo")) await demo(salon.id);
+  await demo(crown.id);
 }
 
 async function demo(salonId: string) {
@@ -81,7 +103,7 @@ async function demo(salonId: string) {
   const services = await prisma.service.findMany({ where: { salonId } });
   const staff = await Promise.all(
     ["Rakib", "Sumon", "Nadia", "Faruk"].map((name, i) =>
-      prisma.staffMember.create({ data: { salonId, name, title: i === 2 ? "Beautician" : "Barber" } }),
+      prisma.staffMember.create({ data: { salonId, name, title: i === 2 ? "Beautician" : "Barber", commissionPct: 30 } }),
     ),
   );
   const admin = (await prisma.user.findFirst({ where: { salonId, role: "ADMIN" } }))!;

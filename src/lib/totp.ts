@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { APP_NAME } from "@/lib/brand";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), compatible with Google Authenticator etc.
 
@@ -61,7 +62,7 @@ export function verifyTotp(secret: string, code: string, now = Date.now()): bool
   return [-1, 0, 1].some((d) => timingSafeEqual(Buffer.from(codeAt(key, counter + d)), Buffer.from(c)));
 }
 
-export function otpauthUrl(secret: string, account: string, issuer = "Crown LifeStyle"): string {
+export function otpauthUrl(secret: string, account: string, issuer = APP_NAME): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }

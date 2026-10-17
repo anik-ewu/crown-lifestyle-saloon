@@ -15,7 +15,7 @@ export type ButtonVariant = keyof typeof BUTTON;
 export function buttonClass(variant: ButtonVariant = "primary", size: "sm" | "md" = "md") {
   return cx(
     "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
-    size === "sm" ? "px-2.5 py-1 text-sm" : "px-4 py-2 text-sm",
+    size === "sm" ? "h-8 px-3 text-sm" : "h-9 px-4 text-sm",
     BUTTON[variant],
   );
 }
@@ -39,17 +39,18 @@ export function LinkButton({
 }
 
 export const inputClass =
-  "block rounded-md border border-stone-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30 disabled:bg-stone-100";
+  "block rounded-md border border-stone-300 bg-white px-3 text-sm shadow-sm focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30 disabled:bg-stone-100";
 
-// full width unless the caller sets its own width
-const field = (className?: string) => cx(inputClass, /(^|\s)w-/.test(className ?? "") ? "" : "w-full", className);
+// full width unless the caller sets its own width; `compact` matches sm buttons (h-8)
+const field = (className?: string, compact?: boolean) =>
+  cx(inputClass, /(^|\s)w-/.test(className ?? "") ? "" : "w-full", compact ? "h-8 py-0" : "py-2", className);
 
-export function Input({ className, ...props }: ComponentProps<"input">) {
-  return <input className={field(className)} {...props} />;
+export function Input({ className, compact, ...props }: ComponentProps<"input"> & { compact?: boolean }) {
+  return <input className={field(className, compact)} {...props} />;
 }
 
-export function Select({ className, ...props }: ComponentProps<"select">) {
-  return <select className={field(className)} {...props} />;
+export function Select({ className, compact, ...props }: ComponentProps<"select"> & { compact?: boolean }) {
+  return <select className={field(className, compact)} {...props} />;
 }
 
 export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
@@ -134,6 +135,42 @@ export function Badge({ color = "gray", children }: { color?: keyof typeof BADGE
     <span className={cx("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-stone-200", BADGE[color])}>
       {children}
     </span>
+  );
+}
+
+/** Bordered row: title and details on the left, actions on the right. */
+export function ListRow({ title, meta, actions, children }: { title: ReactNode; meta?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-stone-200 bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 font-medium">{title}</div>
+          {meta && <div className="mt-0.5 text-sm text-stone-500">{meta}</div>}
+        </div>
+        {actions && <RowActions>{actions}</RowActions>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Right-aligned group of compact controls that all share one height. */
+export function RowActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx("ml-auto flex flex-wrap items-center justify-end gap-2 [&_form]:flex [&_form]:items-center [&_form]:gap-2", className)}>{children}</div>;
+}
+
+/** Red-bordered card for destructive actions, button on the right. */
+export function DangerZone({ title, children, action }: { title: string; children: ReactNode; action: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-red-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
+          <h2 className="font-semibold text-red-800">{title}</h2>
+          <p className="mt-0.5 text-sm text-stone-600">{children}</p>
+        </div>
+        <div className="shrink-0 self-end sm:self-auto">{action}</div>
+      </div>
+    </section>
   );
 }
 

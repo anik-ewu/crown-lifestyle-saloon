@@ -16,25 +16,24 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const items: NavItem[] = [
     ...(canViewDashboard(ctx) ? [{ href: "/dashboard", label: "Dashboard" }] : []),
-    { href: "/billing/new", label: "New bill" },
     { href: "/appointments", label: "Appointments" },
-    { href: "/invoices", label: "Invoices" },
     { href: "/customers", label: "Customers" },
+    { href: "/invoices", label: "Invoices" },
     { href: "/reminders", label: "Reminders" },
-    { href: "/reports/birthdays", label: "Birthdays" },
-    { href: "/reports/closing", label: "Daily closing" },
+    { href: "/reports/closing", label: "Daily closing", group: "More" },
+    { href: "/reports/birthdays", label: "Birthdays", group: "More" },
     ...(admin
       ? [
-          { href: "/reports/commission", label: "Commission", section: "Reports" },
-          { href: "/expenses", label: "Expenses", section: "Reports" },
-          { href: "/catalog/services", label: "Services", section: "Manage" },
-          { href: "/catalog/packages", label: "Packages", section: "Manage" },
-          { href: "/products", label: "Products & stock", section: "Manage" },
-          { href: "/staff", label: "Salon members", section: "Manage" },
-          { href: "/settings", label: "Settings", section: "Manage" },
+          { href: "/reports/commission", label: "Commission", group: "More" },
+          { href: "/expenses", label: "Expenses", group: "More" },
+          { href: "/catalog/services", label: "Services", group: "Manage" },
+          { href: "/catalog/packages", label: "Packages", group: "Manage" },
+          { href: "/products", label: "Products & stock", group: "Manage" },
+          { href: "/staff", label: "Salon members", group: "Manage" },
+          { href: "/settings", label: "Settings", group: "Manage" },
         ]
       : []),
-    ...(isPlatformAdmin(ctx) ? [{ href: "/platform", label: "Platform", section: "Platform" }] : []),
+    ...(isPlatformAdmin(ctx) ? [{ href: "/platform", label: "Platform" }] : []),
   ];
 
   const branchPicker =
@@ -72,6 +71,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <div className="hidden lg:block">{branchPicker}</div>
         <Nav
           items={items}
+          primary={{ href: "/billing/new", label: "New bill" }}
           footer={
             <div className="space-y-3">
               {branchPicker}

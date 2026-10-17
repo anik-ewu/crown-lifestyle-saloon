@@ -1,6 +1,6 @@
-# Crown LifeStyle Saloon
+# Salon Manager
 
-Customer, billing and sales management website for Crown LifeStyle Saloon (Banasree, Dhaka). The full product spec is in [SPEC.md](SPEC.md).
+Customer, billing and sales management website for salons in Bangladesh, sold as a subscription. The first client is Crown LifeStyle Saloon (Banasree, Dhaka). The product name is a placeholder: set `NEXT_PUBLIC_APP_NAME` to change it. The full spec is in [SPEC.md](SPEC.md).
 
 **Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS · PostgreSQL · Prisma 7 · Recharts
 
@@ -9,19 +9,53 @@ Customer, billing and sales management website for Crown LifeStyle Saloon (Banas
 You need Node 20+ and Docker.
 
 ```bash
-cp .env.example .env          # then set SEED_ADMIN_PHONE / SEED_ADMIN_PASSWORD
+cp .env.example .env          # then set PLATFORM_OWNER_* and PLATFORM_ADMIN_PHONES
 docker compose up -d          # Postgres 16 on localhost:5432
 npm install
 npx prisma migrate dev        # create tables
-npm run db:seed               # salon, Banasree branch, owner account, starter services
+npm run db:seed               # your workspace ("Salon Manager HQ") and your owner login
 npm run dev                   # http://localhost:3000
 ```
 
-Sign in with `SEED_ADMIN_PHONE` and `SEED_ADMIN_PASSWORD`.
+Sign in with `PLATFORM_OWNER_PHONE` and `PLATFORM_OWNER_PASSWORD`.
 
-To test with realistic data, run `npm run db:seed -- --demo`. It adds 4 staff, 60 customers and about 15 months of bills, and only works against a local database.
+To test with realistic data, run `npm run db:seed -- --demo`. It only works against a local database. It adds Crown LifeStyle Saloon as a client salon on Pro, free for 12 months, with 4 staff, 60 customers and about 15 months of bills. Sign in to it with `DEMO_CROWN_OWNER_PHONE` and `DEMO_CROWN_OWNER_PASSWORD`.
 
 To create or reset another local login, run `DEV_PHONE=01XXXXXXXXX DEV_PASSWORD=... DEV_ROLE=SUB_ADMIN npx tsx scripts/dev-user.ts`.
+
+## Running it as a business
+
+There are three kinds of login:
+- **You, the platform owner.** You see every salon at **Platform**.
+- **Each salon's admin.**
+- **That salon's sub-admins.**
+
+**Onboard a new salon**
+1. Sign in and open **Platform → Add salon**.
+2. Enter the salon's name, address and phone, the owner's name and mobile, and the plan with its paid/free-until date.
+3. Give the owner the one-time password shown. They sign in with their mobile, choose their own password, and add their staff under **Settings → Sub-admins**.
+- The salon gets its own "Main" branch and starter services. Its data is completely separate from every other salon's.
+
+**Add a branch to a salon**
+- The salon's admin goes to **Settings → Branches → Add branch**.
+- Customers, services and prices are shared by all branches. Bills, appointments and expenses are recorded per branch.
+- Sub-admins can be pinned to one branch. Admins switch branch from the sidebar.
+- Limits by plan: Trial and Basic allow 1 branch, Pro allows 5.
+
+**Subscriptions**
+
+| Plan | Price | Sub-admins | Branches |
+|---|---|---|---|
+| Trial | free, 14 days | 2 | 1 |
+| Basic | ৳1,500/month | 3 | 1 |
+| Pro | ৳3,000/month | 15 | 5 |
+
+- **Paying:** the salon admin pays by bKash to `PLATFORM_BKASH_NUMBER` and enters the TrxID under **Settings → Plan & payment**.
+- **Approving:** you approve it on **Platform**, which extends their paid-until date.
+- **Free periods:** on **Platform**, choose a plan and a "paid/free until" date. Crown is set this way: Pro, free until a date you choose.
+- **Lapsed plans:** 7 days after the date passes, the salon becomes read-only. They can view and export their data, but saving is blocked.
+- **Locked-out owners:** **Reset owner password** on **Platform** gives them a new one-time password.
+- **Self sign-up:** set `ALLOW_SIGNUP=true` to open `/signup` for salons to start a trial themselves. It is off by default.
 
 ## Features
 
@@ -29,7 +63,7 @@ To create or reset another local login, run `DEV_PHONE=01XXXXXXXXX DEV_PASSWORD=
 - **Follow-up:** a reminder board for customers with no visit in 90+ days (call, snooze, archive), and a birthday list.
 - **Reports:** a sales dashboard by month or year, by item, salon member, payment method and branch; commission; expenses and profit; daily closing; CSV export.
 - **Admin:** sub-admins with temporary passwords, branches, audit log, two-step sign in.
-- **Subscription (optional):** set `ALLOW_SIGNUP=true` so other salons can start a 14-day trial. They pay by bKash and enter the TrxID. A platform admin (`PLATFORM_ADMIN_PHONES`) approves the payment at `/platform`. A salon whose plan lapses becomes read-only after 7 days' grace. Crown's own salon is on the `INTERNAL` plan and never expires.
+- **Platform:** add salons, set plans and free periods, approve bKash payments, reset owner passwords.
 
 ## Useful commands
 
@@ -65,4 +99,8 @@ src/app/print/…           printable receipts (58 mm / 80 mm / A4)
 
 ## Deploy
 
-See SPEC.md §7a. In short: create a Neon Postgres database in the Singapore region, then import the repo into Vercel and set `DATABASE_URL`. After the first deploy, run `npm run db:seed` once against the production database, with `SEED_ADMIN_*` set in your shell.
+See SPEC.md §7a. In short:
+1. Create a Neon Postgres database in the Singapore region.
+2. Import the repo into Vercel and set `DATABASE_URL`, `NEXT_PUBLIC_APP_NAME`, `PLATFORM_ADMIN_PHONES` and `PLATFORM_BKASH_NUMBER`.
+3. After the first deploy, run `npm run db:seed` once against the production database, with `PLATFORM_OWNER_*` set in your shell.
+4. Sign in and add Crown from **Platform → Add salon**.

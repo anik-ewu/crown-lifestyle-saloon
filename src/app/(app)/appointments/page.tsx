@@ -97,7 +97,7 @@ export default async function AppointmentsPage({ searchParams }: PageProps<"/app
                       </p>
                       <p className="text-stone-600">{a.service ?? "—"} · {a.durationMin} min</p>
                       {a.status === "BOOKED" && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-stone-100 pt-2">
                           <LinkButton
                             href={a.customerId ? `/billing/new?customer=${a.customerId}` : `/customers/new?next=billing${a.phone ? `&phone=${a.phone.slice(3)}` : ""}`}
                             size="sm"
@@ -106,7 +106,7 @@ export default async function AppointmentsPage({ searchParams }: PageProps<"/app
                             Start bill
                           </LinkButton>
                           {(["DONE", "NO_SHOW", "CANCELLED"] as const).map((s) => (
-                            <ActionForm key={s} action={setAppointmentStatus} showMessage={false}>
+                            <ActionForm key={s} action={setAppointmentStatus} showMessage={false} className="flex">
                               <input type="hidden" name="id" value={a.id} />
                               <input type="hidden" name="status" value={s} />
                               <Button size="sm" variant="ghost">{s === "DONE" ? "Done" : s === "NO_SHOW" ? "No-show" : "Cancel"}</Button>

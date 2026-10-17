@@ -2,7 +2,7 @@ import { setUserBranch } from "@/app/actions/branches";
 import { createSubAdmin, resetSubAdminPassword, setSubAdminActive } from "@/app/actions/settings";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { SettingsTabs } from "@/components/settings-tabs";
-import { Badge, Card, Empty, Field, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Card, Empty, Field, Input, ListRow, PageHeader, Select } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { displayPhone, formatDateTime } from "@/lib/format";
 
@@ -49,35 +49,34 @@ export default async function UsersPage() {
       ) : (
         <div className="space-y-2">
           {subs.map((u) => (
-            <div key={u.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
-              <div>
-                <p className="font-medium">{u.name} {!u.active && <Badge>Deactivated</Badge>} {u.mustChangePassword && u.active && <Badge color="amber">Temp password</Badge>}</p>
-                <p className="text-sm text-stone-500">
-                  {displayPhone(u.phone)}{u.email && ` · ${u.email}`} · Last sign-in {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "never"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-start gap-2">
-                {multiBranch && (
-                  <ActionForm action={setUserBranch} className="flex gap-1">
-                    <input type="hidden" name="userId" value={u.id} />
-                    <Select name="branchId" defaultValue={u.branchId ?? ""} className="w-auto py-1 text-sm" aria-label="Branch">
-                      <option value="">All branches</option>
-                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </Select>
-                    <SubmitButton variant="secondary" size="sm">Set</SubmitButton>
+            <ListRow
+              key={u.id}
+              title={<>{u.name} {!u.active && <Badge>Deactivated</Badge>} {u.mustChangePassword && u.active && <Badge color="amber">Temp password</Badge>}</>}
+              meta={<>{displayPhone(u.phone)}{u.email && ` · ${u.email}`} · Last sign-in {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "never"}</>}
+              actions={
+                <>
+                  {multiBranch && (
+                    <ActionForm action={setUserBranch}>
+                      <input type="hidden" name="userId" value={u.id} />
+                      <Select name="branchId" defaultValue={u.branchId ?? ""} compact className="w-auto" aria-label="Branch">
+                        <option value="">All branches</option>
+                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                      <SubmitButton variant="secondary" size="sm">Set branch</SubmitButton>
+                    </ActionForm>
+                  )}
+                  <ActionForm action={resetSubAdminPassword} confirm={`Reset ${u.name}'s password? They'll be signed out.`}>
+                    <input type="hidden" name="id" value={u.id} />
+                    <SubmitButton variant="secondary" size="sm">Reset password</SubmitButton>
                   </ActionForm>
-                )}
-                <ActionForm action={resetSubAdminPassword} confirm={`Reset ${u.name}'s password? They'll be signed out.`}>
-                  <input type="hidden" name="id" value={u.id} />
-                  <SubmitButton variant="secondary" size="sm">Reset password</SubmitButton>
-                </ActionForm>
-                <ActionForm action={setSubAdminActive} confirm={u.active ? `Deactivate ${u.name}? They'll be signed out immediately.` : undefined}>
-                  <input type="hidden" name="id" value={u.id} />
-                  <input type="hidden" name="active" value={String(!u.active)} />
-                  <SubmitButton variant={u.active ? "danger" : "secondary"} size="sm">{u.active ? "Deactivate" : "Reactivate"}</SubmitButton>
-                </ActionForm>
-              </div>
-            </div>
+                  <ActionForm action={setSubAdminActive} confirm={u.active ? `Deactivate ${u.name}? They'll be signed out immediately.` : undefined}>
+                    <input type="hidden" name="id" value={u.id} />
+                    <input type="hidden" name="active" value={String(!u.active)} />
+                    <SubmitButton variant={u.active ? "danger" : "secondary"} size="sm">{u.active ? "Deactivate" : "Reactivate"}</SubmitButton>
+                  </ActionForm>
+                </>
+              }
+            />
           ))}
         </div>
       )}

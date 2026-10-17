@@ -5,7 +5,7 @@ import { restoreCustomer } from "@/app/actions/reminders";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { CustomerStatusBadge, InvoiceStatusBadge } from "@/components/badges";
 import { CustomerFields } from "@/components/forms/customer-fields";
-import { Card, Empty, LinkButton, PageHeader, Stat, Table } from "@/components/ui";
+import { Card, DangerZone, Empty, LinkButton, PageHeader, Stat, Table } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { displayPhone, formatDate, formatDateTime, money, PAYMENT_LABELS } from "@/lib/format";
 
@@ -97,26 +97,29 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
         </Card>
       )}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <Card title="Edit details" className="lg:col-span-2">
-          <ActionForm action={updateCustomer}>
-            <input type="hidden" name="id" value={c.id} />
-            <CustomerFields c={c} />
-            <div className="mt-4"><SubmitButton>Save changes</SubmitButton></div>
-          </ActionForm>
-        </Card>
-        {ctx.isAdmin && (
-          <Card title="Delete customer">
-            <p className="mb-3 text-sm text-stone-600">
-              Wipes name, phone, address and notes. Past bills stay in sales totals as “Deleted customer”. This can’t be undone.
-            </p>
-            <ActionForm action={deleteCustomer} confirm={`Delete ${c.name}? This can't be undone.`}>
-              <input type="hidden" name="id" value={c.id} />
-              <SubmitButton variant="danger">Delete customer</SubmitButton>
-            </ActionForm>
-          </Card>
-        )}
-      </div>
+      <Card title="Edit details" className="mt-8 max-w-3xl">
+        <ActionForm action={updateCustomer}>
+          <input type="hidden" name="id" value={c.id} />
+          <CustomerFields c={c} />
+          <div className="mt-4 flex justify-end"><SubmitButton>Save changes</SubmitButton></div>
+        </ActionForm>
+      </Card>
+
+      {ctx.isAdmin && (
+        <div className="mt-6 max-w-3xl">
+          <DangerZone
+            title="Delete customer"
+            action={
+              <ActionForm action={deleteCustomer} confirm={`Delete ${c.name}? This can't be undone.`}>
+                <input type="hidden" name="id" value={c.id} />
+                <SubmitButton variant="danger">Delete customer</SubmitButton>
+              </ActionForm>
+            }
+          >
+            Wipes name, phone, address and notes. Past bills stay in sales totals as “Deleted customer”. This can’t be undone.
+          </DangerZone>
+        </div>
+      )}
     </>
   );
 }
